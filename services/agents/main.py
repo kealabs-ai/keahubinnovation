@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Literal
 import sys
-sys.path.append('..')
+sys.path.insert(0, '/app')
 from database import get_db
 
 app = FastAPI()

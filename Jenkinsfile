@@ -2,12 +2,12 @@ pipeline {
     agent any
 
     environment {
-        PROJETO      = 'keahubinnovation'
-        STACK_NAME   = 'keahubinnovation'
-        DEPLOY_PATH  = '/var/jenkins_home/apps/keahubinnovation'
-        GIT_REPO     = 'https://github.com/kealabs-ai/keahubinnovation.git'
-        GIT_BRANCH   = 'master'
-        DOCKER       = '/var/jenkins_home/docker'
+        PROJETO        = 'keahubinnovation'
+        STACK_NAME     = 'keahubinnovation'
+        DEPLOY_PATH    = '/var/jenkins_home/apps/keahubinnovation'
+        GIT_REPO       = 'https://github.com/kealabs-ai/keahubinnovation.git'
+        GIT_BRANCH     = 'master'
+        DOCKER         = '/var/jenkins_home/docker'
         DOCKER_COMPOSE = '/var/jenkins_home/docker-compose'
     }
 
@@ -39,41 +39,24 @@ pipeline {
         }
 
         // ── 3. GERAR .env ─────────────────────────────────────────────────
-        // Credenciais cadastradas em: Manage Jenkins → Credentials
-        // KEAHUB_DB_HOST     = srv1078.hstgr.io
-        // KEAHUB_DB_NAME     = u549746795_kealabs
-        // KEAHUB_DB_USER     = u549746795_kealabs
-        // KEAHUB_DB_PORT     = 3306
         stage('Generate .env') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'KEAHUB_DB_HOST',      variable: 'DB_HOST'),
-                    string(credentialsId: 'KEAHUB_DB_NAME',      variable: 'DB_NAME'),
-                    string(credentialsId: 'KEAHUB_DB_USER',      variable: 'DB_USER'),
-                    string(credentialsId: 'KEAHUB_DB_PASSWORD',  variable: 'DB_PASSWORD'),
-                    string(credentialsId: 'KEAHUB_JWT_SECRET',   variable: 'JWT_SECRET'),
-                    string(credentialsId: 'KEAHUB_ASAAS_KEY',    variable: 'ASAAS_API_KEY'),
-                    string(credentialsId: 'KEAHUB_ASAAS_URL',    variable: 'ASAAS_BASE_URL'),
-                    string(credentialsId: 'KEAHUB_SERVER_HOST',  variable: 'SERVER_HOST'),
-                    string(credentialsId: 'KEAHUB_DOMAIN',       variable: 'DOMAIN')
-                ]) {
-                    sh '''
-                        set -e
-                        cd $DEPLOY_PATH
-                        cat > .env << ENVEOF
-DB_HOST=$DB_HOST
+                sh '''
+                    set -e
+                    cd $DEPLOY_PATH
+                    cat > .env << 'ENVEOF'
+DB_HOST=srv1078.hstgr.io
 DB_PORT=3306
-DB_NAME=$DB_NAME
-DB_USER=$DB_USER
-DB_PASSWORD=$DB_PASSWORD
-JWT_SECRET=$JWT_SECRET
-ASAAS_API_KEY=$ASAAS_API_KEY
-ASAAS_BASE_URL=$ASAAS_BASE_URL
-SERVER_HOST=$SERVER_HOST
-DOMAIN=$DOMAIN
+DB_NAME=u549746795_kealabs
+DB_USER=u549746795_kealabs
+DB_PASSWORD=Sally2025@!
+JWT_SECRET=your-secret-key-change-in-production
+ASAAS_API_KEY=$$aact_hmlg_CHANGE_ME
+ASAAS_BASE_URL=https://sandbox.asaas.com/api/v3
+SERVER_HOST=srv0000000.hstgr.cloud
+DOMAIN=keahubinnovation.com.br
 ENVEOF
-                    '''
-                }
+                '''
             }
         }
 
@@ -184,7 +167,6 @@ ENVEOF
         stage('Health Check') {
             steps {
                 sh '''
-                    set -e
                     echo "▶ Aguardando containers subirem (30s)..."
                     sleep 30
 

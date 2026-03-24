@@ -53,8 +53,8 @@ DB_PASSWORD=Sally2025@!
 JWT_SECRET=your-secret-key-change-in-production
 ASAAS_API_KEY=$$aact_hmlg_CHANGE_ME
 ASAAS_BASE_URL=https://sandbox.asaas.com/api/v3
-SERVER_HOST=srv0000000.hstgr.cloud
-DOMAIN=keahubinnovation.com.br
+SERVER_HOST=srv1023256.hstgr.cloud
+DOMAIN=kealabs.cloud
 ENVEOF
                 '''
             }

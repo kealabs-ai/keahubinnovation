@@ -38,29 +38,7 @@ pipeline {
             }
         }
 
-        // ── 3. GERAR .env ─────────────────────────────────────────────────
-        stage('Generate .env') {
-            steps {
-                sh '''
-                    set -e
-                    cd $DEPLOY_PATH
-                    cat > .env << 'ENVEOF'
-DB_HOST=srv1078.hstgr.io
-DB_PORT=3306
-DB_NAME=u549746795_kealabs
-DB_USER=u549746795_kealabs
-DB_PASSWORD=Sally2025@!
-JWT_SECRET=your-secret-key-change-in-production
-ASAAS_API_KEY=$$aact_hmlg_CHANGE_ME
-ASAAS_BASE_URL=https://sandbox.asaas.com/api/v3
-SERVER_HOST=srv1023256.hstgr.cloud
-DOMAIN=kealabs.cloud
-ENVEOF
-                '''
-            }
-        }
-
-        // ── 4. COPIAR database.py PARA CADA SERVIÇO ───────────────────────
+        // ── 3. COPIAR database.py PARA CADA SERVIÇO ───────────────────────
         stage('Sync database.py') {
             steps {
                 sh '''

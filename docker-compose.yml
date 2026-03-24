@@ -1,0 +1,135 @@
+services:
+
+  # ── CLIENTS ──────────────────────────────────────────────────────────────
+  clients-service:
+    image: keahubinnovation/clients:latest
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.keahubinnovation-clients.rule=(Host(`${SERVER_HOST}`) || Host(`${DOMAIN}`) || Host(`www.${DOMAIN}`)) && PathPrefix(`/api/clients`)"
+      - "traefik.http.routers.keahubinnovation-clients.entrypoints=https"
+      - "traefik.http.routers.keahubinnovation-clients.tls=true"
+      - "traefik.http.middlewares.keahubinnovation-strip-clients.stripprefix.prefixes=/api"
+      - "traefik.http.middlewares.keahubinnovation-cors.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.keahubinnovation-cors.headers.accesscontrolallowmethods=GET,POST,PUT,PATCH,DELETE,OPTIONS"
+      - "traefik.http.middlewares.keahubinnovation-cors.headers.accesscontrolallowheaders=Content-Type,Authorization"
+      - "traefik.http.middlewares.keahubinnovation-cors.headers.accesscontrolmaxage=1728000"
+      - "traefik.http.middlewares.keahubinnovation-cors.headers.addvaryheader=true"
+      - "traefik.http.routers.keahubinnovation-clients.middlewares=keahubinnovation-strip-clients,keahubinnovation-cors"
+      - "traefik.http.services.keahubinnovation-clients.loadbalancer.server.port=8000"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - easypanel
+
+  # ── QUOTES ───────────────────────────────────────────────────────────────
+  quotes-service:
+    image: keahubinnovation/quotes:latest
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.keahubinnovation-quotes.rule=(Host(`${SERVER_HOST}`) || Host(`${DOMAIN}`) || Host(`www.${DOMAIN}`)) && PathPrefix(`/api/quotes`)"
+      - "traefik.http.routers.keahubinnovation-quotes.entrypoints=https"
+      - "traefik.http.routers.keahubinnovation-quotes.tls=true"
+      - "traefik.http.middlewares.keahubinnovation-strip-quotes.stripprefix.prefixes=/api"
+      - "traefik.http.routers.keahubinnovation-quotes.middlewares=keahubinnovation-strip-quotes,keahubinnovation-cors"
+      - "traefik.http.services.keahubinnovation-quotes.loadbalancer.server.port=8000"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - easypanel
+
+  # ── CHAT ─────────────────────────────────────────────────────────────────
+  chat-service:
+    image: keahubinnovation/chat:latest
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.keahubinnovation-chat.rule=(Host(`${SERVER_HOST}`) || Host(`${DOMAIN}`) || Host(`www.${DOMAIN}`)) && PathPrefix(`/api/chat`)"
+      - "traefik.http.routers.keahubinnovation-chat.entrypoints=https"
+      - "traefik.http.routers.keahubinnovation-chat.tls=true"
+      - "traefik.http.middlewares.keahubinnovation-strip-chat.stripprefix.prefixes=/api"
+      - "traefik.http.routers.keahubinnovation-chat.middlewares=keahubinnovation-strip-chat,keahubinnovation-cors"
+      - "traefik.http.services.keahubinnovation-chat.loadbalancer.server.port=8000"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - easypanel
+
+  # ── SETTINGS ─────────────────────────────────────────────────────────────
+  settings-service:
+    image: keahubinnovation/settings:latest
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.keahubinnovation-settings.rule=(Host(`${SERVER_HOST}`) || Host(`${DOMAIN}`) || Host(`www.${DOMAIN}`)) && PathPrefix(`/api/settings`)"
+      - "traefik.http.routers.keahubinnovation-settings.entrypoints=https"
+      - "traefik.http.routers.keahubinnovation-settings.tls=true"
+      - "traefik.http.middlewares.keahubinnovation-strip-settings.stripprefix.prefixes=/api"
+      - "traefik.http.routers.keahubinnovation-settings.middlewares=keahubinnovation-strip-settings,keahubinnovation-cors"
+      - "traefik.http.services.keahubinnovation-settings.loadbalancer.server.port=8000"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - easypanel
+
+  # ── AGENTS ───────────────────────────────────────────────────────────────
+  agents-service:
+    image: keahubinnovation/agents:latest
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.keahubinnovation-agents.rule=(Host(`${SERVER_HOST}`) || Host(`${DOMAIN}`) || Host(`www.${DOMAIN}`)) && PathPrefix(`/api/agents`)"
+      - "traefik.http.routers.keahubinnovation-agents.entrypoints=https"
+      - "traefik.http.routers.keahubinnovation-agents.tls=true"
+      - "traefik.http.middlewares.keahubinnovation-strip-agents.stripprefix.prefixes=/api"
+      - "traefik.http.routers.keahubinnovation-agents.middlewares=keahubinnovation-strip-agents,keahubinnovation-cors"
+      - "traefik.http.services.keahubinnovation-agents.loadbalancer.server.port=8000"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - easypanel
+
+networks:
+  easypanel:
+    external: true

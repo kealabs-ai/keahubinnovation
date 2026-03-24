@@ -39,6 +39,11 @@ pipeline {
         }
 
         // ── 3. GERAR .env ─────────────────────────────────────────────────
+        // Credenciais cadastradas em: Manage Jenkins → Credentials
+        // KEAHUB_DB_HOST     = srv1078.hstgr.io
+        // KEAHUB_DB_NAME     = u549746795_kealabs
+        // KEAHUB_DB_USER     = u549746795_kealabs
+        // KEAHUB_DB_PORT     = 3306
         stage('Generate .env') {
             steps {
                 withCredentials([

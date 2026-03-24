@@ -11,8 +11,13 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 
 class SettingUpsert(BaseModel):
+    setting_key: str
     setting_value: str
     description: Optional[str] = None
+
+
+class SettingDelete(BaseModel):
+    setting_key: str
 
 
 @app.get("/settings/health")
@@ -47,8 +52,8 @@ def get_setting(key: str):
         conn.close()
 
 
-@app.put("/settings/{key}")
-def upsert_setting(key: str, body: SettingUpsert):
+@app.post("/settings/upsert")
+def upsert_setting(body: SettingUpsert):
     conn = get_db()
     cursor = conn.cursor()
     try:
@@ -56,10 +61,10 @@ def upsert_setting(key: str, body: SettingUpsert):
             """INSERT INTO system_settings (setting_key, setting_value, description)
                VALUES (%s, %s, %s)
                ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), description = VALUES(description)""",
-            (key, body.setting_value, body.description)
+            (body.setting_key, body.setting_value, body.description)
         )
         conn.commit()
-        return {"setting_key": key, "setting_value": body.setting_value}
+        return {"setting_key": body.setting_key, "setting_value": body.setting_value}
     except Exception as e:
         conn.rollback()
         raise HTTPException(400, str(e))
@@ -68,15 +73,16 @@ def upsert_setting(key: str, body: SettingUpsert):
         conn.close()
 
 
-@app.delete("/settings/{key}", status_code=204)
-def delete_setting(key: str):
+@app.post("/settings/delete")
+def delete_setting(body: SettingDelete):
     conn = get_db()
     cursor = conn.cursor()
     try:
-        cursor.execute("DELETE FROM system_settings WHERE setting_key = %s", (key,))
+        cursor.execute("DELETE FROM system_settings WHERE setting_key = %s", (body.setting_key,))
         conn.commit()
         if cursor.rowcount == 0:
             raise HTTPException(404, "Setting not found")
+        return {"deleted": True, "setting_key": body.setting_key}
     except HTTPException:
         raise
     except Exception as e:

@@ -10,8 +10,6 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
-# ── Models ────────────────────────────────────────────────────────────────────
-
 class BreakdownItem(BaseModel):
     item_key: str
     item_value: float
@@ -63,16 +61,20 @@ class QuoteCreate(BaseModel):
 
 
 class QuoteStatusUpdate(BaseModel):
+    id: str
     status: Literal['PENDING', 'APPROVED', 'REJECTED']
     note: Optional[str] = None
 
 
 class AsaasUpdate(BaseModel):
+    id: str
     asaas_customer_id: Optional[str] = None
     asaas_charge_id: Optional[str] = None
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+class QuoteDelete(BaseModel):
+    id: str
+
 
 @app.get("/quotes/health")
 def health():
@@ -188,8 +190,6 @@ def create_quote(body: QuoteCreate):
                VALUES (%s, %s, %s, %s, %s)""",
             (body.client_id, body.service_type, body.description, body.setup_value, body.monthly_value)
         )
-        cursor.execute("SELECT LAST_INSERT_ID() as lid")
-        # UUID-based — get by rowid trick won't work; fetch via client+service+created
         cursor.execute(
             "SELECT id FROM quotes WHERE client_id = %s AND service_type = %s ORDER BY created_at DESC LIMIT 1",
             (body.client_id, body.service_type)
@@ -255,18 +255,17 @@ def create_quote(body: QuoteCreate):
         conn.close()
 
 
-@app.patch("/quotes/{quote_id}/status")
-def update_status(quote_id: str, body: QuoteStatusUpdate):
+@app.post("/quotes/update-status")
+def update_status(body: QuoteStatusUpdate):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT status FROM quotes WHERE id = %s", (quote_id,))
-        row = cursor.fetchone()
-        if not row:
+        cursor.execute("SELECT status FROM quotes WHERE id = %s", (body.id,))
+        if not cursor.fetchone():
             raise HTTPException(404, "Quote not found")
-        cursor.execute("UPDATE quotes SET status = %s WHERE id = %s", (body.status, quote_id))
+        cursor.execute("UPDATE quotes SET status = %s WHERE id = %s", (body.status, body.id))
         conn.commit()
-        return {"id": quote_id, "status": body.status}
+        return {"id": body.id, "status": body.status}
     except HTTPException:
         raise
     except Exception as e:
@@ -277,19 +276,19 @@ def update_status(quote_id: str, body: QuoteStatusUpdate):
         conn.close()
 
 
-@app.patch("/quotes/{quote_id}/asaas")
-def update_asaas(quote_id: str, body: AsaasUpdate):
+@app.post("/quotes/update-asaas")
+def update_asaas(body: AsaasUpdate):
     conn = get_db()
     cursor = conn.cursor()
     try:
         cursor.execute(
             "UPDATE quotes SET asaas_customer_id = %s, asaas_charge_id = %s WHERE id = %s",
-            (body.asaas_customer_id, body.asaas_charge_id, quote_id)
+            (body.asaas_customer_id, body.asaas_charge_id, body.id)
         )
         conn.commit()
         if cursor.rowcount == 0:
             raise HTTPException(404, "Quote not found")
-        return {"id": quote_id}
+        return {"id": body.id}
     except HTTPException:
         raise
     except Exception as e:
@@ -300,15 +299,16 @@ def update_asaas(quote_id: str, body: AsaasUpdate):
         conn.close()
 
 
-@app.delete("/quotes/{quote_id}", status_code=204)
-def delete_quote(quote_id: str):
+@app.post("/quotes/delete")
+def delete_quote(body: QuoteDelete):
     conn = get_db()
     cursor = conn.cursor()
     try:
-        cursor.execute("DELETE FROM quotes WHERE id = %s", (quote_id,))
+        cursor.execute("DELETE FROM quotes WHERE id = %s", (body.id,))
         conn.commit()
         if cursor.rowcount == 0:
             raise HTTPException(404, "Quote not found")
+        return {"deleted": True, "id": body.id}
     except HTTPException:
         raise
     except Exception as e:

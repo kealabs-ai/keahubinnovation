@@ -18,10 +18,15 @@ class ClientCreate(BaseModel):
 
 
 class ClientUpdate(BaseModel):
+    id: str
     name: Optional[str] = None
     email: Optional[str] = None
     cpf_cnpj: Optional[str] = None
     phone: Optional[str] = None
+
+
+class ClientDelete(BaseModel):
+    id: str
 
 
 @app.get("/clients/health")
@@ -66,8 +71,6 @@ def create_client(body: ClientCreate):
             (body.name, body.email, body.cpf_cnpj, body.phone)
         )
         conn.commit()
-        cursor.execute("SELECT * FROM clients WHERE id = LAST_INSERT_ID()")
-        # UUID default — fetch by email or cpf_cnpj
         cursor.execute("SELECT * FROM clients WHERE name = %s ORDER BY created_at DESC LIMIT 1", (body.name,))
         return cursor.fetchone()
     except Exception as e:
@@ -78,23 +81,23 @@ def create_client(body: ClientCreate):
         conn.close()
 
 
-@app.put("/clients/{client_id}")
-def update_client(client_id: str, body: ClientUpdate):
+@app.post("/clients/update")
+def update_client(body: ClientUpdate):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
-        fields = {k: v for k, v in body.model_dump().items() if v is not None}
+        fields = {k: v for k, v in body.model_dump().items() if k != 'id' and v is not None}
         if not fields:
             raise HTTPException(400, "No fields to update")
         set_clause = ", ".join(f"{k} = %s" for k in fields)
         cursor.execute(
             f"UPDATE clients SET {set_clause} WHERE id = %s",
-            (*fields.values(), client_id)
+            (*fields.values(), body.id)
         )
         conn.commit()
         if cursor.rowcount == 0:
             raise HTTPException(404, "Client not found")
-        cursor.execute("SELECT * FROM clients WHERE id = %s", (client_id,))
+        cursor.execute("SELECT * FROM clients WHERE id = %s", (body.id,))
         return cursor.fetchone()
     except HTTPException:
         raise
@@ -106,15 +109,16 @@ def update_client(client_id: str, body: ClientUpdate):
         conn.close()
 
 
-@app.delete("/clients/{client_id}", status_code=204)
-def delete_client(client_id: str):
+@app.post("/clients/delete")
+def delete_client(body: ClientDelete):
     conn = get_db()
     cursor = conn.cursor()
     try:
-        cursor.execute("DELETE FROM clients WHERE id = %s", (client_id,))
+        cursor.execute("DELETE FROM clients WHERE id = %s", (body.id,))
         conn.commit()
         if cursor.rowcount == 0:
             raise HTTPException(404, "Client not found")
+        return {"deleted": True, "id": body.id}
     except HTTPException:
         raise
     except Exception as e:

@@ -23,6 +23,7 @@ class AgentCreate(BaseModel):
 
 
 class AgentUpdate(BaseModel):
+    id: str
     name: Optional[str] = None
     company: Optional[str] = None
     role: Optional[str] = None
@@ -32,6 +33,10 @@ class AgentUpdate(BaseModel):
     closing_style: Optional[str] = None
     system_prompt: Optional[str] = None
     is_active: Optional[bool] = None
+
+
+class AgentDelete(BaseModel):
+    id: str
 
 
 @app.get("/agents/health")
@@ -109,23 +114,23 @@ def create_agent(body: AgentCreate):
         conn.close()
 
 
-@app.put("/agents/{agent_id}")
-def update_agent(agent_id: str, body: AgentUpdate):
+@app.post("/agents/update")
+def update_agent(body: AgentUpdate):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
-        fields = {k: v for k, v in body.model_dump().items() if v is not None}
+        fields = {k: v for k, v in body.model_dump().items() if k != 'id' and v is not None}
         if not fields:
             raise HTTPException(400, "No fields to update")
         set_clause = ", ".join(f"{k} = %s" for k in fields)
         cursor.execute(
             f"UPDATE agent_profiles SET {set_clause} WHERE id = %s",
-            (*fields.values(), agent_id)
+            (*fields.values(), body.id)
         )
         conn.commit()
         if cursor.rowcount == 0:
             raise HTTPException(404, "Agent not found")
-        cursor.execute("SELECT * FROM agent_profiles WHERE id = %s", (agent_id,))
+        cursor.execute("SELECT * FROM agent_profiles WHERE id = %s", (body.id,))
         return cursor.fetchone()
     except HTTPException:
         raise
@@ -137,15 +142,16 @@ def update_agent(agent_id: str, body: AgentUpdate):
         conn.close()
 
 
-@app.delete("/agents/{agent_id}", status_code=204)
-def delete_agent(agent_id: str):
+@app.post("/agents/delete")
+def delete_agent(body: AgentDelete):
     conn = get_db()
     cursor = conn.cursor()
     try:
-        cursor.execute("DELETE FROM agent_profiles WHERE id = %s", (agent_id,))
+        cursor.execute("DELETE FROM agent_profiles WHERE id = %s", (body.id,))
         conn.commit()
         if cursor.rowcount == 0:
             raise HTTPException(404, "Agent not found")
+        return {"deleted": True, "id": body.id}
     except HTTPException:
         raise
     except Exception as e:

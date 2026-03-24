@@ -18,13 +18,19 @@ class SessionCreate(BaseModel):
 
 
 class SessionUpdate(BaseModel):
+    id: str
     quote_id: Optional[str] = None
     agent_name: Optional[str] = None
     agent_role: Optional[str] = None
     agent_tone: Optional[Literal['formal', 'friendly', 'technical', 'consultive']] = None
 
 
+class SessionDelete(BaseModel):
+    id: str
+
+
 class MessageCreate(BaseModel):
+    session_id: str
     role: Literal['user', 'model']
     content: str
 
@@ -67,6 +73,21 @@ def get_session(session_id: str):
         conn.close()
 
 
+@app.get("/chat/sessions/{session_id}/messages")
+def list_messages(session_id: str):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT * FROM chat_messages WHERE session_id = %s ORDER BY sent_at ASC",
+            (session_id,)
+        )
+        return cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
+
+
 @app.post("/chat/sessions", status_code=201)
 def create_session(body: SessionCreate):
     conn = get_db()
@@ -91,23 +112,23 @@ def create_session(body: SessionCreate):
         conn.close()
 
 
-@app.patch("/chat/sessions/{session_id}")
-def update_session(session_id: str, body: SessionUpdate):
+@app.post("/chat/sessions/update")
+def update_session(body: SessionUpdate):
     conn = get_db()
     cursor = conn.cursor()
     try:
-        fields = {k: v for k, v in body.model_dump().items() if v is not None}
+        fields = {k: v for k, v in body.model_dump().items() if k != 'id' and v is not None}
         if not fields:
             raise HTTPException(400, "No fields to update")
         set_clause = ", ".join(f"{k} = %s" for k in fields)
         cursor.execute(
             f"UPDATE chat_sessions SET {set_clause} WHERE id = %s",
-            (*fields.values(), session_id)
+            (*fields.values(), body.id)
         )
         conn.commit()
         if cursor.rowcount == 0:
             raise HTTPException(404, "Session not found")
-        return {"id": session_id}
+        return {"id": body.id}
     except HTTPException:
         raise
     except Exception as e:
@@ -118,55 +139,41 @@ def update_session(session_id: str, body: SessionUpdate):
         conn.close()
 
 
-@app.get("/chat/sessions/{session_id}/messages")
-def list_messages(session_id: str):
+@app.post("/chat/sessions/delete")
+def delete_session(body: SessionDelete):
     conn = get_db()
-    cursor = conn.cursor(dictionary=True)
+    cursor = conn.cursor()
     try:
-        cursor.execute(
-            "SELECT * FROM chat_messages WHERE session_id = %s ORDER BY sent_at ASC",
-            (session_id,)
-        )
-        return cursor.fetchall()
+        cursor.execute("DELETE FROM chat_sessions WHERE id = %s", (body.id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            raise HTTPException(404, "Session not found")
+        return {"deleted": True, "id": body.id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(400, str(e))
     finally:
         cursor.close()
         conn.close()
 
 
-@app.post("/chat/sessions/{session_id}/messages", status_code=201)
-def add_message(session_id: str, body: MessageCreate):
+@app.post("/chat/messages", status_code=201)
+def add_message(body: MessageCreate):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT id FROM chat_sessions WHERE id = %s", (session_id,))
+        cursor.execute("SELECT id FROM chat_sessions WHERE id = %s", (body.session_id,))
         if not cursor.fetchone():
             raise HTTPException(404, "Session not found")
         cursor.execute(
             "INSERT INTO chat_messages (session_id, role, content) VALUES (%s, %s, %s)",
-            (session_id, body.role, body.content)
+            (body.session_id, body.role, body.content)
         )
         conn.commit()
         cursor.execute("SELECT * FROM chat_messages WHERE id = LAST_INSERT_ID()")
         return cursor.fetchone()
-    except HTTPException:
-        raise
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(400, str(e))
-    finally:
-        cursor.close()
-        conn.close()
-
-
-@app.delete("/chat/sessions/{session_id}", status_code=204)
-def delete_session(session_id: str):
-    conn = get_db()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("DELETE FROM chat_sessions WHERE id = %s", (session_id,))
-        conn.commit()
-        if cursor.rowcount == 0:
-            raise HTTPException(404, "Session not found")
     except HTTPException:
         raise
     except Exception as e:

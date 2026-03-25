@@ -2,12 +2,17 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Literal
+import os
+import httpx
 import sys
 sys.path.insert(0, '/app')
 from database import get_db
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 
 class SessionCreate(BaseModel):
@@ -35,10 +40,19 @@ class MessageCreate(BaseModel):
     content: str
 
 
+class CompletionRequest(BaseModel):
+    session_id: str
+    message: str
+
+
+# ── Health ────────────────────────────────────────────────────────────────────
+
 @app.get("/chat/health")
 def health():
     return {"status": "ok"}
 
+
+# ── Sessions ──────────────────────────────────────────────────────────────────
 
 @app.get("/chat/sessions")
 def list_sessions(client_id: Optional[str] = None):
@@ -159,6 +173,8 @@ def delete_session(body: SessionDelete):
         conn.close()
 
 
+# ── Messages ──────────────────────────────────────────────────────────────────
+
 @app.post("/chat/messages", status_code=201)
 def add_message(body: MessageCreate):
     conn = get_db()
@@ -174,6 +190,93 @@ def add_message(body: MessageCreate):
         conn.commit()
         cursor.execute("SELECT * FROM chat_messages WHERE id = LAST_INSERT_ID()")
         return cursor.fetchone()
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(400, str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ── Completions (Gemini Flash) ────────────────────────────────────────────────
+
+@app.post("/chat/completions")
+def completions(body: CompletionRequest):
+    if not GEMINI_API_KEY:
+        raise HTTPException(500, "GEMINI_API_KEY not configured")
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # 1. Valida sessão
+        cursor.execute("SELECT * FROM chat_sessions WHERE id = %s", (body.session_id,))
+        session = cursor.fetchone()
+        if not session:
+            raise HTTPException(404, "Session not found")
+
+        # 2. Busca system_prompt do agente ativo
+        cursor.execute("SELECT system_prompt, name, role, tone, services, objections, closing_style FROM agent_profiles WHERE is_active = 1 LIMIT 1")
+        agent = cursor.fetchone()
+        if agent and agent['system_prompt']:
+            system_prompt = agent['system_prompt']
+        elif agent:
+            system_prompt = (
+                f"Você é {agent['name']}, {agent['role']} da KeaLabs. "
+                f"Tom: {agent['tone']}. "
+                f"Serviços: {agent['services']}. "
+                f"Objeções: {agent['objections']}. "
+                f"Fechamento: {agent['closing_style']}."
+            )
+        else:
+            system_prompt = "Você é Kea, consultora comercial da KeaLabs. Seja objetiva e consultiva."
+
+        # 3. Salva mensagem do usuário
+        cursor.execute(
+            "INSERT INTO chat_messages (session_id, role, content) VALUES (%s, 'user', %s)",
+            (body.session_id, body.message)
+        )
+        conn.commit()
+
+        # 4. Busca histórico completo da sessão
+        cursor.execute(
+            "SELECT role, content FROM chat_messages WHERE session_id = %s ORDER BY sent_at ASC",
+            (body.session_id,)
+        )
+        history = cursor.fetchall()
+
+        # 5. Monta payload Gemini
+        contents = [{"role": msg['role'], "parts": [{"text": msg['content']}]} for msg in history]
+        payload = {
+            "system_instruction": {"parts": [{"text": system_prompt}]},
+            "contents": contents,
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 1024
+            }
+        }
+
+        # 6. Chama Gemini Flash
+        response = httpx.post(
+            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+            json=payload,
+            timeout=30
+        )
+        if response.status_code != 200:
+            raise HTTPException(502, f"Gemini error: {response.text}")
+
+        reply = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+
+        # 7. Salva resposta do modelo
+        cursor.execute(
+            "INSERT INTO chat_messages (session_id, role, content) VALUES (%s, 'model', %s)",
+            (body.session_id, reply)
+        )
+        conn.commit()
+
+        return {"session_id": body.session_id, "reply": reply}
+
     except HTTPException:
         raise
     except Exception as e:

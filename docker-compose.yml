@@ -16,12 +16,12 @@ services:
       - "traefik.http.routers.keahubinnovation-clients.entrypoints=https"
       - "traefik.http.routers.keahubinnovation-clients.tls=true"
       - "traefik.http.middlewares.keahubinnovation-strip-clients.stripprefix.prefixes=/api"
-      - "traefik.http.middlewares.keahubinnovation-cors.headers.accesscontrolalloworiginlist=*"
-      - "traefik.http.middlewares.keahubinnovation-cors.headers.accesscontrolallowmethods=GET,POST,PUT,PATCH,DELETE,OPTIONS"
-      - "traefik.http.middlewares.keahubinnovation-cors.headers.accesscontrolallowheaders=Content-Type,Authorization"
-      - "traefik.http.middlewares.keahubinnovation-cors.headers.accesscontrolmaxage=1728000"
-      - "traefik.http.middlewares.keahubinnovation-cors.headers.addvaryheader=true"
-      - "traefik.http.routers.keahubinnovation-clients.middlewares=keahubinnovation-strip-clients,keahubinnovation-cors"
+      - "traefik.http.middlewares.keahubinnovation-cors-clients.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.keahubinnovation-cors-clients.headers.accesscontrolallowmethods=GET,POST,OPTIONS"
+      - "traefik.http.middlewares.keahubinnovation-cors-clients.headers.accesscontrolallowheaders=Content-Type,Authorization"
+      - "traefik.http.middlewares.keahubinnovation-cors-clients.headers.accesscontrolmaxage=1728000"
+      - "traefik.http.middlewares.keahubinnovation-cors-clients.headers.addvaryheader=true"
+      - "traefik.http.routers.keahubinnovation-clients.middlewares=keahubinnovation-strip-clients,keahubinnovation-cors-clients"
       - "traefik.http.services.keahubinnovation-clients.loadbalancer.server.port=8000"
     deploy:
       replicas: 1
@@ -46,7 +46,12 @@ services:
       - "traefik.http.routers.keahubinnovation-quotes.entrypoints=https"
       - "traefik.http.routers.keahubinnovation-quotes.tls=true"
       - "traefik.http.middlewares.keahubinnovation-strip-quotes.stripprefix.prefixes=/api"
-      - "traefik.http.routers.keahubinnovation-quotes.middlewares=keahubinnovation-strip-quotes,keahubinnovation-cors"
+      - "traefik.http.middlewares.keahubinnovation-cors-quotes.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.keahubinnovation-cors-quotes.headers.accesscontrolallowmethods=GET,POST,OPTIONS"
+      - "traefik.http.middlewares.keahubinnovation-cors-quotes.headers.accesscontrolallowheaders=Content-Type,Authorization"
+      - "traefik.http.middlewares.keahubinnovation-cors-quotes.headers.accesscontrolmaxage=1728000"
+      - "traefik.http.middlewares.keahubinnovation-cors-quotes.headers.addvaryheader=true"
+      - "traefik.http.routers.keahubinnovation-quotes.middlewares=keahubinnovation-strip-quotes,keahubinnovation-cors-quotes"
       - "traefik.http.services.keahubinnovation-quotes.loadbalancer.server.port=8000"
     deploy:
       replicas: 1
@@ -71,7 +76,12 @@ services:
       - "traefik.http.routers.keahubinnovation-chat.entrypoints=https"
       - "traefik.http.routers.keahubinnovation-chat.tls=true"
       - "traefik.http.middlewares.keahubinnovation-strip-chat.stripprefix.prefixes=/api"
-      - "traefik.http.routers.keahubinnovation-chat.middlewares=keahubinnovation-strip-chat,keahubinnovation-cors"
+      - "traefik.http.middlewares.keahubinnovation-cors-chat.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.keahubinnovation-cors-chat.headers.accesscontrolallowmethods=GET,POST,OPTIONS"
+      - "traefik.http.middlewares.keahubinnovation-cors-chat.headers.accesscontrolallowheaders=Content-Type,Authorization"
+      - "traefik.http.middlewares.keahubinnovation-cors-chat.headers.accesscontrolmaxage=1728000"
+      - "traefik.http.middlewares.keahubinnovation-cors-chat.headers.addvaryheader=true"
+      - "traefik.http.routers.keahubinnovation-chat.middlewares=keahubinnovation-strip-chat,keahubinnovation-cors-chat"
       - "traefik.http.services.keahubinnovation-chat.loadbalancer.server.port=8000"
     deploy:
       replicas: 1
@@ -96,7 +106,12 @@ services:
       - "traefik.http.routers.keahubinnovation-settings.entrypoints=https"
       - "traefik.http.routers.keahubinnovation-settings.tls=true"
       - "traefik.http.middlewares.keahubinnovation-strip-settings.stripprefix.prefixes=/api"
-      - "traefik.http.routers.keahubinnovation-settings.middlewares=keahubinnovation-strip-settings,keahubinnovation-cors"
+      - "traefik.http.middlewares.keahubinnovation-cors-settings.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.keahubinnovation-cors-settings.headers.accesscontrolallowmethods=GET,POST,OPTIONS"
+      - "traefik.http.middlewares.keahubinnovation-cors-settings.headers.accesscontrolallowheaders=Content-Type,Authorization"
+      - "traefik.http.middlewares.keahubinnovation-cors-settings.headers.accesscontrolmaxage=1728000"
+      - "traefik.http.middlewares.keahubinnovation-cors-settings.headers.addvaryheader=true"
+      - "traefik.http.routers.keahubinnovation-settings.middlewares=keahubinnovation-strip-settings,keahubinnovation-cors-settings"
       - "traefik.http.services.keahubinnovation-settings.loadbalancer.server.port=8000"
     deploy:
       replicas: 1
@@ -121,7 +136,12 @@ services:
       - "traefik.http.routers.keahubinnovation-agents.entrypoints=https"
       - "traefik.http.routers.keahubinnovation-agents.tls=true"
       - "traefik.http.middlewares.keahubinnovation-strip-agents.stripprefix.prefixes=/api"
-      - "traefik.http.routers.keahubinnovation-agents.middlewares=keahubinnovation-strip-agents,keahubinnovation-cors"
+      - "traefik.http.middlewares.keahubinnovation-cors-agents.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.keahubinnovation-cors-agents.headers.accesscontrolallowmethods=GET,POST,OPTIONS"
+      - "traefik.http.middlewares.keahubinnovation-cors-agents.headers.accesscontrolallowheaders=Content-Type,Authorization"
+      - "traefik.http.middlewares.keahubinnovation-cors-agents.headers.accesscontrolmaxage=1728000"
+      - "traefik.http.middlewares.keahubinnovation-cors-agents.headers.addvaryheader=true"
+      - "traefik.http.routers.keahubinnovation-agents.middlewares=keahubinnovation-strip-agents,keahubinnovation-cors-agents"
       - "traefik.http.services.keahubinnovation-agents.loadbalancer.server.port=8000"
     deploy:
       replicas: 1

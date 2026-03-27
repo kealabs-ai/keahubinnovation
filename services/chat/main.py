@@ -49,7 +49,12 @@ class CompletionRequest(BaseModel):
 
 @app.get("/chat/health")
 def health():
-    return {"status": "ok"}
+    key = GEMINI_API_KEY
+    return {
+        "status": "ok",
+        "gemini_configured": bool(key),
+        "gemini_key_preview": f"{key[:8]}..." if len(key) > 8 else "NOT SET"
+    }
 
 
 # ── Sessions ──────────────────────────────────────────────────────────────────

@@ -70,7 +70,7 @@ services:
       DB_USER: "u549746795_kealabs"
       DB_PASSWORD: "Sally2025@!"
       JWT_SECRET: "your-secret-key-change-in-production"
-      GEMINI_API_KEY: "CHANGE_ME"
+      GEMINI_API_KEY: "AIzaSyBWJ6kGFjXvtC6MfjwlBHihR2tDXHRFXNM"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.keahubinnovation-chat.rule=(Host(`srv1023256.hstgr.cloud`) || Host(`kealabs.cloud`) || Host(`www.kealabs.cloud`)) && PathPrefix(`/api/chat`)"

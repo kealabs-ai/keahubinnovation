@@ -106,6 +106,8 @@ class CreateQuoteDTO(BaseModel):
     clientEmail: Optional[str] = None
     clientCpfCnpj: Optional[str] = None
     clientPhone: Optional[str] = None
+    installments: Optional[int] = 1
+    interest_rate: Optional[float] = 0.0
     pricing: Union[WebPricingInput, BIPricingInput, MiniSitePricingInput, AIAgentPricingInput]
 
 
@@ -371,9 +373,15 @@ def create_quote(body: CreateQuoteDTO):
             cursor.execute("SELECT id FROM clients WHERE name = %s ORDER BY created_at DESC LIMIT 1", (body.clientName,))
             client_id = cursor.fetchone()['id']
 
+        installments = body.installments or 1
+        interest_rate = body.interest_rate or 0.0
+        total_with_interest = round(setup_value * (1 + interest_rate / 100), 2) if interest_rate else setup_value
+        installment_value = round(total_with_interest / installments, 2) if installments > 1 else total_with_interest
+
         cursor.execute(
-            "INSERT INTO quotes (client_id, service_type, setup_value, monthly_value) VALUES (%s, %s, %s, %s)",
-            (client_id, st, setup_value, monthly_value)
+            """INSERT INTO quotes (client_id, service_type, setup_value, monthly_value, installments, interest_rate, installment_value)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (client_id, st, setup_value, monthly_value, installments, interest_rate, installment_value)
         )
         cursor.execute(
             "SELECT id FROM quotes WHERE client_id = %s AND service_type = %s ORDER BY created_at DESC LIMIT 1",

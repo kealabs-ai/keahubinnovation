@@ -151,6 +151,37 @@ services:
     networks:
       - easypanel
 
+  # ── AUTH ───────────────────────────────────────────────────────────────────
+  auth-service:
+    image: keahubinnovation/auth:latest
+    environment:
+      DB_HOST: "srv1078.hstgr.io"
+      DB_PORT: "3306"
+      DB_NAME: "u549746795_kealabs"
+      DB_USER: "u549746795_kealabs"
+      DB_PASSWORD: "Sally2025@!"
+      JWT_SECRET: "your-secret-key-change-in-production"
+      JWT_EXPIRY_HOURS: "8"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.keahubinnovation-auth.rule=(Host(`srv1023256.hstgr.cloud`) || Host(`kealabs.cloud`) || Host(`www.kealabs.cloud`)) && PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.keahubinnovation-auth.entrypoints=https"
+      - "traefik.http.routers.keahubinnovation-auth.tls=true"
+      - "traefik.http.middlewares.keahubinnovation-strip-auth.stripprefix.prefixes=/api"
+      - "traefik.http.middlewares.keahubinnovation-cors-auth.headers.accesscontrolalloworiginlist=https://kealabs.cloud,https://www.kealabs.cloud,https://srv1023256.hstgr.cloud"
+      - "traefik.http.middlewares.keahubinnovation-cors-auth.headers.accesscontrolallowmethods=GET,POST,OPTIONS"
+      - "traefik.http.middlewares.keahubinnovation-cors-auth.headers.accesscontrolallowheaders=Content-Type,Authorization,Accept"
+      - "traefik.http.middlewares.keahubinnovation-cors-auth.headers.accesscontrolmaxage=86400"
+      - "traefik.http.middlewares.keahubinnovation-cors-auth.headers.addvaryheader=true"
+      - "traefik.http.routers.keahubinnovation-auth.middlewares=keahubinnovation-strip-auth,keahubinnovation-cors-auth"
+      - "traefik.http.services.keahubinnovation-auth.loadbalancer.server.port=8000"
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - easypanel
+
   # ── PROSPECTS ────────────────────────────────────────────────────────────
   prospects-service:
     image: keahubinnovation/prospects:latest

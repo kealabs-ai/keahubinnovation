@@ -98,6 +98,10 @@ pipeline {
                     $DOCKER build -t $PROJETO/agents:latest \
                         -f services/agents/Dockerfile services/
 
+                    echo "▶ Building auth..."
+                    $DOCKER build -t $PROJETO/auth:latest \
+                        -f services/auth/Dockerfile services/
+
                     echo "▶ Building prospects..."
                     $DOCKER build -t $PROJETO/prospects:latest \
                         -f services/prospects/Dockerfile services/
@@ -152,7 +156,7 @@ pipeline {
                     echo "▶ Aguardando containers subirem (30s)..."
                     sleep 30
 
-                    SERVICES="clients quotes chat settings agents prospects"
+                    SERVICES="clients quotes chat settings agents auth prospects"
                     FAILED=0
 
                     for svc in $SERVICES; do

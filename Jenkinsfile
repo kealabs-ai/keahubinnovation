@@ -98,6 +98,10 @@ pipeline {
                     $DOCKER build -t $PROJETO/agents:latest \
                         -f services/agents/Dockerfile services/
 
+                    echo "▶ Building prospects..."
+                    $DOCKER build -t $PROJETO/prospects:latest \
+                        -f services/prospects/Dockerfile services/
+
                     echo "✅ Todas as imagens construídas com sucesso"
                 '''
             }
@@ -148,7 +152,7 @@ pipeline {
                     echo "▶ Aguardando containers subirem (30s)..."
                     sleep 30
 
-                    SERVICES="clients quotes chat settings agents"
+                    SERVICES="clients quotes chat settings agents prospects"
                     FAILED=0
 
                     for svc in $SERVICES; do

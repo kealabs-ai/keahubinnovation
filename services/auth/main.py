@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, Literal
-import sys, os, jwt, bcrypt
+import sys, os, jwt, bcrypt, secrets
 from datetime import datetime, timedelta
 sys.path.insert(0, '/app')
 from database import get_db
@@ -43,6 +43,9 @@ class LoginDTO(BaseModel):
     email: str
     password: str
 
+class RefreshTokenDTO(BaseModel):
+    refresh_token: str
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,7 +61,16 @@ def _create_token(user: dict) -> str:
         "name": user["name"],
         "email": user["email"],
         "role": user["role"],
+        "type": "access",
         "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRY_HOURS)
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+def _create_refresh_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "type": "refresh",
+        "exp": datetime.utcnow() + timedelta(days=30)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
@@ -104,7 +116,9 @@ def login(body: LoginDTO):
         token = _create_token(user)
         return {
             "access_token": token,
+            "refresh_token": _create_refresh_token(user["id"]),
             "token_type": "bearer",
+            "expires_in": JWT_EXPIRY_HOURS * 3600,
             "user": {
                 "id": user["id"],
                 "name": user["name"],
@@ -137,7 +151,35 @@ def me(user: dict = Depends(get_current_user)):
 
 @app.post("/auth/validate")
 def validate_token(user: dict = Depends(get_current_user)):
+    if user.get("type") != "access":
+        raise HTTPException(401, "Token inválido para autenticação")
     return {"valid": True, "user": user}
+
+
+@app.post("/auth/refresh")
+def refresh_token(body: RefreshTokenDTO):
+    payload = _decode_token(body.refresh_token)
+    if payload.get("type") != "refresh":
+        raise HTTPException(401, "Token de refresh inválido")
+
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT * FROM auth_users WHERE id = %s AND active = 1", (payload["sub"],)
+        )
+        user = cursor.fetchone()
+        if not user:
+            raise HTTPException(401, "Usuário inativo ou não encontrado")
+
+        return {
+            "access_token": _create_token(user),
+            "refresh_token": _create_refresh_token(user["id"]),
+            "token_type": "bearer"
+        }
+    finally:
+        cursor.close()
+        conn.close()
 
 
 @app.get("/auth/users")

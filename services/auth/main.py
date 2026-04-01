@@ -255,9 +255,7 @@ def update_user(body: UserUpdate, user: dict = Depends(require_admin)):
 
 
 @app.post("/auth/users/change-password")
-def change_password(body: ChangePassword, user: dict = Depends(get_current_user)):
-    if user["sub"] != body.id and user["role"] != "admin":
-        raise HTTPException(403, "Sem permissão")
+def change_password(body: ChangePassword):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
@@ -265,7 +263,7 @@ def change_password(body: ChangePassword, user: dict = Depends(get_current_user)
         row = cursor.fetchone()
         if not row:
             raise HTTPException(404, "Usuário não encontrado")
-        if user["role"] != "admin" and not _verify(body.current_password, row["password_hash"]):
+        if not _verify(body.current_password, row["password_hash"]):
             raise HTTPException(401, "Senha atual incorreta")
         cursor.execute(
             "UPDATE auth_users SET password_hash = %s WHERE id = %s",

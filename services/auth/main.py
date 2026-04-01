@@ -35,7 +35,7 @@ class UserDelete(BaseModel):
     id: str
 
 class ChangePassword(BaseModel):
-    id: str
+    email: str
     current_password: str
     new_password: str
 
@@ -259,7 +259,7 @@ def change_password(body: ChangePassword):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT password_hash FROM auth_users WHERE id = %s", (body.id,))
+        cursor.execute("SELECT id, password_hash FROM auth_users WHERE email = %s", (body.email,))
         row = cursor.fetchone()
         if not row:
             raise HTTPException(404, "Usuário não encontrado")
@@ -267,10 +267,10 @@ def change_password(body: ChangePassword):
             raise HTTPException(401, "Senha atual incorreta")
         cursor.execute(
             "UPDATE auth_users SET password_hash = %s WHERE id = %s",
-            (_hash(body.new_password), body.id)
+            (_hash(body.new_password), row["id"])
         )
         conn.commit()
-        return {"updated": True}
+        return {"updated": True, "id": row["id"]}
     except HTTPException:
         raise
     except Exception as e:

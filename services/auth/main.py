@@ -36,11 +36,10 @@ class UserDelete(BaseModel):
 
 class ChangePassword(BaseModel):
     email: str
-    current_password: str
-    new_password: str
+    password: str
 
     def validate_fields(self):
-        if not self.email or not self.current_password or not self.new_password:
+        if not self.email or not self.password:
             raise HTTPException(400, "Todos os campos são obrigatórios")
 
 class LoginDTO(BaseModel):
@@ -272,15 +271,13 @@ def change_password(body: ChangePassword):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT id, password_hash FROM auth_users WHERE email = %s", (body.email,))
+        cursor.execute("SELECT id FROM auth_users WHERE email = %s", (body.email,))
         row = cursor.fetchone()
         if not row:
             raise HTTPException(404, "Usuário não encontrado")
-        if not _verify(body.current_password, row["password_hash"]):
-            raise HTTPException(401, "Senha atual incorreta")
         cursor.execute(
             "UPDATE auth_users SET password_hash = %s WHERE id = %s",
-            (_hash(body.new_password), row["id"])
+            (_hash(body.password), row["id"])
         )
         conn.commit()
         return {"updated": True, "id": row["id"]}

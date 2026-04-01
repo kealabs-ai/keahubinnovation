@@ -39,6 +39,10 @@ class ChangePassword(BaseModel):
     current_password: str
     new_password: str
 
+    def validate_fields(self):
+        if not self.email or not self.current_password or not self.new_password:
+            raise HTTPException(400, "Todos os campos são obrigatórios")
+
 class LoginDTO(BaseModel):
     email: str
     password: str
@@ -256,6 +260,7 @@ def update_user(body: UserUpdate, user: dict = Depends(require_admin)):
 
 @app.post("/auth/users/change-password")
 def change_password(body: ChangePassword):
+    body.validate_fields()
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:

@@ -57,9 +57,11 @@ def _hash(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 def _verify(password: str, hashed: str) -> bool:
+    if not hashed or not hashed.startswith("$2"):
+        return password == hashed
     try:
         return bcrypt.checkpw(password.encode(), hashed.encode())
-    except Exception:
+    except BaseException:
         return password == hashed
 
 def _create_token(user: dict) -> str:

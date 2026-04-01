@@ -57,7 +57,10 @@ def _hash(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 def _verify(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
+    try:
+        return bcrypt.checkpw(password.encode(), hashed.encode())
+    except Exception:
+        return password == hashed
 
 def _create_token(user: dict) -> str:
     payload = {
@@ -112,6 +115,9 @@ def login(body: LoginDTO):
         if not user or not _verify(body.password, user["password_hash"]):
             raise HTTPException(401, "Credenciais inválidas")
 
+        if not user["password_hash"].startswith("$2"):
+            cursor.execute("UPDATE auth_users SET password_hash = %s WHERE id = %s", (_hash(body.password), user["id"]))
+            conn.commit()
         cursor.execute(
             "UPDATE auth_users SET last_login = NOW() WHERE id = %s", (user["id"],)
         )

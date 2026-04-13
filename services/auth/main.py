@@ -50,15 +50,17 @@ class RefreshTokenDTO(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _hash(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(12)).decode('utf-8')
 
 def _verify(password: str, hashed: str) -> bool:
-    if not hashed or not hashed.startswith("$2"):
+    if not hashed:
+        return False
+    if not hashed.startswith('$2'):
         return password == hashed
     try:
-        return bcrypt.checkpw(password.encode(), hashed.encode())
-    except BaseException:
-        return password == hashed
+        return bcrypt.checkpw(password.encode('utf-8'), hashed.strip().encode('utf-8'))
+    except (ValueError, TypeError):
+        return False
 
 def _create_token(user: dict) -> str:
     payload = {

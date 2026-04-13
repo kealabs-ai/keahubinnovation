@@ -153,26 +153,33 @@ pipeline {
         stage('Health Check') {
             steps {
                 sh '''
-                    echo "▶ Aguardando containers subirem (30s)..."
-                    sleep 30
+                    echo "▶ Aguardando containers subirem (60s)..."
+                    sleep 60
 
                     SERVICES="clients quotes chat settings agents auth prospects"
                     FAILED=0
 
                     for svc in $SERVICES; do
-                        STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-                            http://localhost:8000/${svc}/health 2>/dev/null || echo "000")
-                        if [ "$STATUS" = "200" ]; then
-                            echo "  ✔ $svc → OK"
+                        CONTAINER=$($DOCKER ps --filter "name=${STACK_NAME}_${svc}-service" --format "{{.ID}}" | head -1)
+                        if [ -n "$CONTAINER" ]; then
+                            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                                --max-time 5 \
+                                http://$(docker inspect --format="{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" $CONTAINER):8000/${svc}/health 2>/dev/null || echo "000")
+                            if [ "$STATUS" = "200" ]; then
+                                echo "  ✔ $svc → OK"
+                            else
+                                echo "  ✘ $svc → HTTP $STATUS"
+                                FAILED=$((FAILED + 1))
+                            fi
                         else
-                            echo "  ✘ $svc → HTTP $STATUS"
+                            echo "  ✘ $svc → container não encontrado"
                             FAILED=$((FAILED + 1))
                         fi
                     done
 
                     if [ $FAILED -gt 0 ]; then
                         echo "⚠️  $FAILED serviço(s) não responderam ao health check"
-                        echo "    Verifique via: docker stack ps $STACK_NAME"
+                        $DOCKER stack ps $STACK_NAME --no-trunc
                     fi
                 '''
             }

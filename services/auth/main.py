@@ -35,12 +35,9 @@ class UserDelete(BaseModel):
     id: str
 
 class ChangePassword(BaseModel):
-    email: str
-    password: str
-
-    def validate_fields(self):
-        if not self.email or not self.password:
-            raise HTTPException(400, "Todos os campos são obrigatórios")
+    id: str
+    current_password: str
+    new_password: str
 
 class LoginDTO(BaseModel):
     email: str
@@ -266,21 +263,24 @@ def update_user(body: UserUpdate, user: dict = Depends(require_admin)):
 
 
 @app.post("/auth/users/change-password")
-def change_password(body: ChangePassword):
-    body.validate_fields()
+def change_password(body: ChangePassword, user: dict = Depends(get_current_user)):
+    if user["sub"] != body.id and user["role"] != "admin":
+        raise HTTPException(403, "Sem permissão")
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT id FROM auth_users WHERE email = %s", (body.email,))
+        cursor.execute("SELECT password_hash FROM auth_users WHERE id = %s", (body.id,))
         row = cursor.fetchone()
         if not row:
             raise HTTPException(404, "Usuário não encontrado")
+        if user["role"] != "admin" and not _verify(body.current_password, row["password_hash"]):
+            raise HTTPException(401, "Senha atual incorreta")
         cursor.execute(
             "UPDATE auth_users SET password_hash = %s WHERE id = %s",
-            (_hash(body.password), row["id"])
+            (_hash(body.new_password), body.id)
         )
         conn.commit()
-        return {"updated": True, "id": row["id"]}
+        return {"updated": True}
     except HTTPException:
         raise
     except Exception as e:

@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional, List, Literal, Union
-import sys
+import sys, io
 sys.path.insert(0, '/app')
 from database import get_db
 
@@ -240,6 +241,358 @@ class AsaasUpdate(BaseModel):
 
 class QuoteDelete(BaseModel):
     id: str
+
+
+# ── PDF Models ───────────────────────────────────────────────────────────────
+
+class PdfRow(BaseModel):
+    label: str
+    value: str
+    bold: Optional[bool] = False
+
+class PdfSubtotal(BaseModel):
+    label: str
+    value: str
+
+class PdfSection(BaseModel):
+    title: str
+    rows: List[PdfRow]
+    subtotal: Optional[PdfSubtotal] = None
+
+class PdfHostingRow(BaseModel):
+    label: str
+    spec: str
+    price: str
+
+class PdfPayload(BaseModel):
+    clientName: str
+    clientEmail: Optional[str] = None
+    clientCpfCnpj: Optional[str] = None
+    clientPhone: Optional[str] = None
+    sections: List[PdfSection]
+    hosting: Optional[List[PdfHostingRow]] = None
+    setupValue: str
+    clientCharge: str
+    installments: int
+    installmentValue: str
+    totalCharge: str
+    liquidMensal: str
+    liquidAntecipado: str
+    mdrInfo: str
+    date: str
+
+
+def _generate_pdf(p: PdfPayload) -> bytes:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
+    import requests as req_lib
+
+    ORANGE  = colors.HexColor('#EA580C')
+    DARK    = colors.HexColor('#1F2937')
+    GRAY    = colors.HexColor('#6B7280')
+    LIGHT   = colors.HexColor('#FAFAFA')
+    ORANGE_LIGHT = colors.HexColor('#FFF1E6')
+    GREEN   = colors.HexColor('#22C55E')
+    GREEN_LIGHT  = colors.HexColor('#F0FDF4')
+    WHITE   = colors.white
+    W, H    = A4
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+        leftMargin=14*mm, rightMargin=14*mm,
+        topMargin=46*mm, bottomMargin=18*mm)
+
+    # ── Logo via URL ──────────────────────────────────────────────────────────
+    logo_img = None
+    try:
+        from reportlab.platypus import Image as RLImage
+        r = req_lib.get('https://kealabs.cloud/assets/kealabs_logo_strategic-DId0Dtnm.png', timeout=5)
+        logo_buf = io.BytesIO(r.content)
+        logo_img = RLImage(logo_buf, width=44*mm, height=18*mm)
+    except Exception:
+        pass
+
+    # ── Header (canvas) ───────────────────────────────────────────────────────
+    def on_first_page(canvas, doc):
+        canvas.saveState()
+        # fundo laranja
+        canvas.setFillColor(ORANGE)
+        canvas.rect(0, H - 40*mm, W, 40*mm, fill=1, stroke=0)
+        # faixa escura
+        canvas.setFillColor(colors.HexColor('#B83700'))
+        canvas.rect(0, H - 40*mm, W, 8*mm, fill=1, stroke=0)
+        # logo
+        if logo_img:
+            logo_img.drawOn(canvas, 14*mm, H - 32*mm)
+        else:
+            canvas.setFillColor(WHITE)
+            canvas.setFont('Helvetica-Bold', 20)
+            canvas.drawString(14*mm, H - 24*mm, 'KeaLabs')
+        # título direita
+        canvas.setFillColor(WHITE)
+        canvas.setFont('Helvetica-Bold', 13)
+        canvas.drawRightString(W - 14*mm, H - 16*mm, 'Proposta Comercial')
+        canvas.setFont('Helvetica', 8)
+        canvas.drawRightString(W - 14*mm, H - 22*mm, p.date)
+        # faixa inferior do header
+        canvas.setFont('Helvetica-Oblique', 8)
+        canvas.setFillColor(colors.HexColor('#FFFFFF99'))
+        canvas.drawString(14*mm, H - 37*mm, 'Gerada automaticamente pelo sistema KeaFlow')
+        canvas.setFont('Helvetica-Bold', 7)
+        canvas.setFillColor(WHITE)
+        canvas.drawRightString(W - 14*mm, H - 37*mm, 'VALIDA POR 15 DIAS')
+        # footer
+        canvas.setFillColor(ORANGE)
+        canvas.rect(0, 0, W, 3*mm, fill=1, stroke=0)
+        canvas.setFillColor(DARK)
+        canvas.rect(0, 3*mm, W, 12*mm, fill=1, stroke=0)
+        canvas.setFillColor(WHITE)
+        canvas.setFont('Helvetica-Bold', 9)
+        canvas.drawString(14*mm, 10*mm, 'KeaLabs')
+        canvas.setFont('Helvetica', 7)
+        canvas.setFillColor(colors.HexColor('#9CA3AF'))
+        canvas.drawString(14*mm, 6*mm, 'kealabs.cloud - Tecnologia que transforma negocios')
+        from datetime import datetime
+        canvas.drawRightString(W - 14*mm, 8*mm, f'Gerado em {datetime.now().strftime("%d/%m/%Y %H:%M")}')
+        canvas.restoreState()
+
+    # ── Estilos ───────────────────────────────────────────────────────────────
+    def sty(name, **kw):
+        return ParagraphStyle(name, **kw)
+
+    s_label  = sty('lbl',  fontSize=9,  textColor=GRAY,  fontName='Helvetica')
+    s_value  = sty('val',  fontSize=9,  textColor=DARK,  fontName='Helvetica',      alignment=TA_RIGHT)
+    s_bold   = sty('bold', fontSize=9,  textColor=DARK,  fontName='Helvetica-Bold', alignment=TA_RIGHT)
+    s_orange = sty('org',  fontSize=9,  textColor=ORANGE,fontName='Helvetica-Bold', alignment=TA_RIGHT)
+    s_sec    = sty('sec',  fontSize=8,  textColor=WHITE, fontName='Helvetica-Bold')
+    s_client_lbl = sty('clbl', fontSize=7.5, textColor=ORANGE, fontName='Helvetica-Bold')
+    s_client_val = sty('cval', fontSize=10,  textColor=DARK,   fontName='Helvetica-Bold')
+    s_note   = sty('note', fontSize=8,  textColor=GRAY,  fontName='Helvetica', leading=13)
+    s_card_lbl = sty('cdlbl', fontSize=7.5, textColor=WHITE, fontName='Helvetica-Bold', alignment=TA_CENTER)
+    s_card_val = sty('cdval', fontSize=16,  textColor=WHITE, fontName='Helvetica-Bold', alignment=TA_CENTER)
+    s_card_sub = sty('cdsub', fontSize=7.5, textColor=colors.HexColor('#FFFFFF99'), fontName='Helvetica', alignment=TA_CENTER)
+    s_hosting_title = sty('htitle', fontSize=9, textColor=colors.HexColor('#166534'), fontName='Helvetica-Bold')
+    s_hosting_sub   = sty('hsub',   fontSize=8, textColor=colors.HexColor('#166534'), fontName='Helvetica')
+
+    col_w = W - 28*mm
+    story = []
+
+    # ── Cliente ───────────────────────────────────────────────────────────────
+    client_data = [
+        [Paragraph('CLIENTE', s_client_lbl),   Paragraph('E-MAIL', s_client_lbl),
+         Paragraph('CPF / CNPJ', s_client_lbl), Paragraph('TELEFONE', s_client_lbl)],
+        [Paragraph(p.clientName or '—', s_client_val),
+         Paragraph(p.clientEmail or '—', s_client_val),
+         Paragraph(p.clientCpfCnpj or '—', s_client_val),
+         Paragraph(p.clientPhone or '—', s_client_val)],
+    ]
+    client_table = Table(client_data, colWidths=[col_w/4]*4)
+    client_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#FFF7F3')),
+        ('BOX',        (0,0), (-1,-1), 0.5, colors.HexColor('#FED7AA')),
+        ('ROUNDEDCORNERS', [6]),
+        ('TOPPADDING',    (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING',   (0,0), (-1,-1), 10),
+        ('RIGHTPADDING',  (0,0), (-1,-1), 10),
+    ]))
+    story.append(client_table)
+    story.append(Spacer(1, 5*mm))
+
+    # ── Seções ────────────────────────────────────────────────────────────────
+    for sec in p.sections:
+        # cabeçalho da seção
+        sec_header = Table([[Paragraph(sec.title.upper(), s_sec)]], colWidths=[col_w])
+        sec_header.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), ORANGE),
+            ('TOPPADDING',    (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('LEFTPADDING',   (0,0), (-1,-1), 8),
+            ('ROUNDEDCORNERS', [4]),
+        ]))
+        story.append(sec_header)
+
+        rows_data = []
+        for i, row in enumerate(sec.rows):
+            bg = LIGHT if i % 2 == 0 else WHITE
+            val_style = s_bold if row.bold else s_value
+            rows_data.append(([Paragraph(row.label, s_label), Paragraph(row.value, val_style)], bg))
+
+        if rows_data:
+            tdata = [r[0] for r in rows_data]
+            t = Table(tdata, colWidths=[col_w*0.62, col_w*0.38])
+            ts = TableStyle([
+                ('BOX',           (0,0), (-1,-1), 0.3, colors.HexColor('#F0E8E0')),
+                ('LINEBELOW',     (0,0), (-1,-2), 0.3, colors.HexColor('#F5EDE6')),
+                ('TOPPADDING',    (0,0), (-1,-1), 5),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                ('LEFTPADDING',   (0,0), (-1,-1), 8),
+                ('RIGHTPADDING',  (0,0), (-1,-1), 8),
+            ])
+            for i, (_, bg) in enumerate(rows_data):
+                ts.add('BACKGROUND', (0,i), (-1,i), bg)
+            t.setStyle(ts)
+            story.append(t)
+
+        if sec.subtotal:
+            sub_t = Table(
+                [[Paragraph(sec.subtotal.label, sty('sl', fontSize=9, textColor=ORANGE, fontName='Helvetica-Bold')),
+                  Paragraph(sec.subtotal.value, s_orange)]],
+                colWidths=[col_w*0.62, col_w*0.38]
+            )
+            sub_t.setStyle(TableStyle([
+                ('BACKGROUND',    (0,0), (-1,-1), ORANGE_LIGHT),
+                ('TOPPADDING',    (0,0), (-1,-1), 6),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+                ('LEFTPADDING',   (0,0), (-1,-1), 8),
+                ('RIGHTPADDING',  (0,0), (-1,-1), 8),
+            ]))
+            story.append(sub_t)
+        story.append(Spacer(1, 4*mm))
+
+    # ── Hospedagem ────────────────────────────────────────────────────────────
+    if p.hosting:
+        sec_header = Table([[Paragraph('HOSPEDAGEM — INCLUSA NO SERVICO', s_sec)]], colWidths=[col_w])
+        sec_header.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), ORANGE),
+            ('TOPPADDING',    (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+            ('LEFTPADDING',   (0,0), (-1,-1), 8),
+            ('ROUNDEDCORNERS', [4]),
+        ]))
+        story.append(sec_header)
+
+        notice = Table(
+            [[Paragraph('Hospedagem inclusa no servico contratado', s_hosting_title)],
+             [Paragraph('Gerenciamento, manutencao e suporte sao de responsabilidade da KeaLabs.', s_hosting_sub)]],
+            colWidths=[col_w]
+        )
+        notice.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), GREEN_LIGHT),
+            ('BOX',           (0,0), (-1,-1), 0.5, GREEN),
+            ('TOPPADDING',    (0,0), (-1,-1), 6),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+            ('LEFTPADDING',   (0,0), (-1,-1), 10),
+            ('ROUNDEDCORNERS', [4]),
+        ]))
+        story.append(notice)
+
+        h_data = []
+        for i, h in enumerate(p.hosting):
+            bg = LIGHT if i % 2 == 0 else WHITE
+            h_data.append((
+                [Paragraph(f'<b>{h.label}</b> — {h.spec}', s_label),
+                 Paragraph(f'{h.price}/mes', s_bold)],
+                bg
+            ))
+        if h_data:
+            ht = Table([r[0] for r in h_data], colWidths=[col_w*0.62, col_w*0.38])
+            hts = TableStyle([
+                ('BOX',           (0,0), (-1,-1), 0.3, colors.HexColor('#F0E8E0')),
+                ('LINEBELOW',     (0,0), (-1,-2), 0.3, colors.HexColor('#F5EDE6')),
+                ('TOPPADDING',    (0,0), (-1,-1), 5),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                ('LEFTPADDING',   (0,0), (-1,-1), 8),
+                ('RIGHTPADDING',  (0,0), (-1,-1), 8),
+            ])
+            for i, (_, bg) in enumerate(h_data):
+                hts.add('BACKGROUND', (0,i), (-1,i), bg)
+            ht.setStyle(hts)
+            story.append(ht)
+
+        badge = Table([[Paragraph('GERENCIADO PELA KEALABS', sty('gb', fontSize=7.5, textColor=WHITE, fontName='Helvetica-Bold'))]],
+                      colWidths=[50*mm])
+        badge.setStyle(TableStyle([
+            ('BACKGROUND',    (0,0), (-1,-1), GREEN),
+            ('TOPPADDING',    (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+            ('LEFTPADDING',   (0,0), (-1,-1), 8),
+            ('ROUNDEDCORNERS', [10]),
+        ]))
+        story.append(Spacer(1, 2*mm))
+        story.append(badge)
+        story.append(Spacer(1, 4*mm))
+
+    # ── Resumo Financeiro ─────────────────────────────────────────────────────
+    story.append(Spacer(1, 2*mm))
+    sum_header = Table([[Paragraph('RESUMO FINANCEIRO', s_sec)]], colWidths=[col_w])
+    sum_header.setStyle(TableStyle([
+        ('BACKGROUND',    (0,0), (-1,-1), ORANGE),
+        ('TOPPADDING',    (0,0), (-1,-1), 5),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('LEFTPADDING',   (0,0), (-1,-1), 8),
+        ('ROUNDEDCORNERS', [4]),
+    ]))
+    story.append(sum_header)
+    story.append(Spacer(1, 3*mm))
+
+    half = (col_w - 4*mm) / 2
+    cards = Table(
+        [[
+            Table(
+                [[Paragraph('SETUP LIQUIDO', s_card_lbl)],
+                 [Paragraph(p.setupValue, s_card_val)],
+                 [Paragraph('valor liquido para a KeaLabs', s_card_sub)]],
+                colWidths=[half]
+            ),
+            Table(
+                [[Paragraph('COBRAR DO CLIENTE', s_card_lbl)],
+                 [Paragraph(f'{p.installments}x {p.installmentValue}', s_card_val)],
+                 [Paragraph(f'total {p.totalCharge}', s_card_sub)]],
+                colWidths=[half]
+            ),
+        ]],
+        colWidths=[half, half], spaceBefore=0
+    )
+    cards.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (0,0), ORANGE),
+        ('BACKGROUND', (1,0), (1,0), DARK),
+        ('TOPPADDING',    (0,0), (-1,-1), 10),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+        ('LEFTPADDING',   (0,0), (-1,-1), 8),
+        ('RIGHTPADDING',  (0,0), (-1,-1), 8),
+        ('ROUNDEDCORNERS', [6]),
+    ]))
+    story.append(cards)
+    story.append(Spacer(1, 3*mm))
+
+    notes = Table(
+        [[Paragraph(f'<b>Detalhes do parcelamento:</b><br/>{p.mdrInfo}<br/>'
+                    f'Liquido mes a mes: <b>{p.liquidMensal}</b> &nbsp;|&nbsp; '
+                    f'Liquido antecipado (2 dias): <b>{p.liquidAntecipado}</b>', s_note)]],
+        colWidths=[col_w]
+    )
+    notes.setStyle(TableStyle([
+        ('BACKGROUND',    (0,0), (-1,-1), colors.HexColor('#FAFAF9')),
+        ('BOX',           (0,0), (-1,-1), 0.5, colors.HexColor('#E5E0D8')),
+        ('TOPPADDING',    (0,0), (-1,-1), 8),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+        ('LEFTPADDING',   (0,0), (-1,-1), 10),
+        ('RIGHTPADDING',  (0,0), (-1,-1), 10),
+        ('ROUNDEDCORNERS', [4]),
+    ]))
+    story.append(notes)
+
+    doc.build(story, onFirstPage=on_first_page, onLaterPages=on_first_page)
+    return buf.getvalue()
+
+
+@app.post("/quotes/pdf")
+def generate_pdf(body: PdfPayload):
+    try:
+        pdf_bytes = _generate_pdf(body)
+    except Exception as e:
+        raise HTTPException(500, f"Erro ao gerar PDF: {e}")
+    slug = body.clientName.replace(' ', '-').lower() or 'kealabs'
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type='application/pdf',
+        headers={'Content-Disposition': f'attachment; filename="proposta-{slug}.pdf"'}
+    )
 
 
 @app.get("/quotes/health")

@@ -11,8 +11,11 @@ from database import get_db
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")  # gemini | openai | groq
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.0-flash")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 
 class SessionCreate(BaseModel):
@@ -49,12 +52,10 @@ class CompletionRequest(BaseModel):
 
 @app.get("/chat/health")
 def health():
-    key = GEMINI_API_KEY
     return {
         "status": "ok",
-        "model": "gemini-2.0-flash",
-        "gemini_configured": bool(key),
-        "gemini_key_preview": f"{key[:8]}..." if len(key) > 8 else "NOT SET"
+        "llm_provider": LLM_PROVIDER,
+        "llm_model": LLM_MODEL,
     }
 
 
@@ -225,9 +226,6 @@ def add_message(body: MessageCreate):
         if body.role != 'user':
             return [user_msg]
 
-        if not GEMINI_API_KEY:
-            raise HTTPException(500, "Chave da API Gemini não configurada no servidor.")
-
         system_prompt = _get_system_prompt(cursor)
 
         # Busca histórico completo
@@ -238,32 +236,7 @@ def add_message(body: MessageCreate):
         )
         history = cursor.fetchall()
 
-        # Monta payload Gemini 2.0 Flash
-        contents = [
-            {"role": m['role'], "parts": [{"text": m['content']}]}
-            for m in history
-        ]
-        payload = {
-            "system_instruction": {"parts": [{"text": system_prompt}]},
-            "contents": contents,
-            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1024}
-        }
-
-        response = httpx.post(
-            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
-            json=payload,
-            timeout=30
-        )
-
-        if response.status_code != 200:
-            raise HTTPException(502, f"Erro na API Gemini: {response.text}")
-
-        data = response.json()
-        candidates = data.get("candidates", [])
-        if not candidates:
-            raise HTTPException(502, "Gemini não retornou resposta. Tente novamente.")
-
-        reply = candidates[0]["content"]["parts"][0]["text"]
+        reply = _call_llm(system_prompt, history)
 
         # Salva resposta do modelo
         cursor.execute(
@@ -284,6 +257,54 @@ def add_message(body: MessageCreate):
     finally:
         cursor.close()
         conn.close()
+
+
+# ── LLM dispatcher ───────────────────────────────────────────────────────────
+
+def _call_llm(system_prompt: str, history: list) -> str:
+    provider = LLM_PROVIDER.lower()
+
+    if provider == "gemini":
+        if not GEMINI_API_KEY:
+            raise HTTPException(500, "GEMINI_API_KEY não configurada.")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{LLM_MODEL}:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "system_instruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"role": m['role'], "parts": [{"text": m['content']}]} for m in history],
+            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1024}
+        }
+        resp = httpx.post(url, json=payload, timeout=30)
+        if resp.status_code != 200:
+            raise HTTPException(502, f"Erro Gemini: {resp.text}")
+        candidates = resp.json().get("candidates", [])
+        if not candidates:
+            raise HTTPException(502, "Gemini não retornou resposta.")
+        return candidates[0]["content"]["parts"][0]["text"]
+
+    if provider in ("openai", "groq"):
+        api_key = OPENAI_API_KEY if provider == "openai" else GROQ_API_KEY
+        if not api_key:
+            raise HTTPException(500, f"{provider.upper()}_API_KEY não configurada.")
+        base_url = (
+            "https://api.openai.com/v1"
+            if provider == "openai"
+            else "https://api.groq.com/openai/v1"
+        )
+        messages = [{"role": "system", "content": system_prompt}] + [
+            {"role": "assistant" if m['role'] == 'model' else m['role'], "content": m['content']}
+            for m in history
+        ]
+        resp = httpx.post(
+            f"{base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"model": LLM_MODEL, "messages": messages, "temperature": 0.7, "max_tokens": 1024},
+            timeout=30
+        )
+        if resp.status_code != 200:
+            raise HTTPException(502, f"Erro {provider}: {resp.text}")
+        return resp.json()["choices"][0]["message"]["content"]
+
+    raise HTTPException(500, f"LLM_PROVIDER '{provider}' não suportado. Use: gemini, openai, groq.")
 
 
 # ── Completions (mantido por compatibilidade) ─────────────────────────────────

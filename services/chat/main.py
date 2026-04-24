@@ -12,7 +12,7 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 
 class SessionCreate(BaseModel):
@@ -52,6 +52,7 @@ def health():
     key = GEMINI_API_KEY
     return {
         "status": "ok",
+        "model": "gemini-2.0-flash",
         "gemini_configured": bool(key),
         "gemini_key_preview": f"{key[:8]}..." if len(key) > 8 else "NOT SET"
     }
@@ -178,109 +179,102 @@ def delete_session(body: SessionDelete):
         conn.close()
 
 
-# ── Messages ──────────────────────────────────────────────────────────────────
+# ── Messages (salva + chama Gemini 2.0 Flash) ────────────────────────────────
+
+def _get_system_prompt(cursor) -> str:
+    cursor.execute(
+        "SELECT system_prompt, name, role, tone, services, objections, closing_style "
+        "FROM agent_profiles WHERE is_active = 1 LIMIT 1"
+    )
+    agent = cursor.fetchone()
+    if agent and agent.get('system_prompt'):
+        return agent['system_prompt']
+    if agent:
+        return (
+            f"Você é {agent['name']}, {agent['role']} da KeaLabs. "
+            f"Tom: {agent['tone']}. Serviços: {agent['services']}. "
+            f"Objeções: {agent['objections']}. Fechamento: {agent['closing_style']}."
+        )
+    return (
+        "Você é Kea, consultora comercial da KeaLabs — empresa de tecnologia "
+        "especializada em sites web, automações, BI e agentes de IA. "
+        "Seja objetiva, consultiva e sempre termine com um próximo passo concreto."
+    )
+
 
 @app.post("/chat/messages", status_code=201)
 def add_message(body: MessageCreate):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
-        cursor.execute("SELECT id FROM chat_sessions WHERE id = %s", (body.session_id,))
+        # Valida sessão
+        cursor.execute("SELECT * FROM chat_sessions WHERE id = %s", (body.session_id,))
         if not cursor.fetchone():
-            raise HTTPException(404, "Session not found")
+            raise HTTPException(404, "Sessão não encontrada. Inicie uma nova conversa.")
+
+        # Salva mensagem do usuário
         cursor.execute(
             "INSERT INTO chat_messages (session_id, role, content) VALUES (%s, %s, %s)",
             (body.session_id, body.role, body.content)
         )
         conn.commit()
         cursor.execute("SELECT * FROM chat_messages WHERE id = LAST_INSERT_ID()")
-        return cursor.fetchone()
-    except HTTPException:
-        raise
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(400, str(e))
-    finally:
-        cursor.close()
-        conn.close()
+        user_msg = cursor.fetchone()
 
+        # Só chama Gemini se for mensagem do usuário
+        if body.role != 'user':
+            return [user_msg]
 
-# ── Completions (Gemini Flash) ────────────────────────────────────────────────
+        if not GEMINI_API_KEY:
+            raise HTTPException(500, "Chave da API Gemini não configurada no servidor.")
 
-@app.post("/chat/completions")
-def completions(body: CompletionRequest):
-    if not GEMINI_API_KEY:
-        raise HTTPException(500, "GEMINI_API_KEY not configured")
+        system_prompt = _get_system_prompt(cursor)
 
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    try:
-        # 1. Valida sessão
-        cursor.execute("SELECT * FROM chat_sessions WHERE id = %s", (body.session_id,))
-        session = cursor.fetchone()
-        if not session:
-            raise HTTPException(404, "Session not found")
-
-        # 2. Busca system_prompt do agente ativo
-        cursor.execute("SELECT system_prompt, name, role, tone, services, objections, closing_style FROM agent_profiles WHERE is_active = 1 LIMIT 1")
-        agent = cursor.fetchone()
-        if agent and agent['system_prompt']:
-            system_prompt = agent['system_prompt']
-        elif agent:
-            system_prompt = (
-                f"Você é {agent['name']}, {agent['role']} da KeaLabs. "
-                f"Tom: {agent['tone']}. "
-                f"Serviços: {agent['services']}. "
-                f"Objeções: {agent['objections']}. "
-                f"Fechamento: {agent['closing_style']}."
-            )
-        else:
-            system_prompt = "Você é Kea, consultora comercial da KeaLabs. Seja objetiva e consultiva."
-
-        # 3. Salva mensagem do usuário
+        # Busca histórico completo
         cursor.execute(
-            "INSERT INTO chat_messages (session_id, role, content) VALUES (%s, 'user', %s)",
-            (body.session_id, body.message)
-        )
-        conn.commit()
-
-        # 4. Busca histórico completo da sessão
-        cursor.execute(
-            "SELECT role, content FROM chat_messages WHERE session_id = %s ORDER BY sent_at ASC",
+            "SELECT role, content FROM chat_messages "
+            "WHERE session_id = %s ORDER BY sent_at ASC",
             (body.session_id,)
         )
         history = cursor.fetchall()
 
-        # 5. Monta payload Gemini
-        contents = [{"role": msg['role'], "parts": [{"text": msg['content']}]} for msg in history]
+        # Monta payload Gemini 2.0 Flash
+        contents = [
+            {"role": m['role'], "parts": [{"text": m['content']}]}
+            for m in history
+        ]
         payload = {
             "system_instruction": {"parts": [{"text": system_prompt}]},
             "contents": contents,
-            "generationConfig": {
-                "temperature": 0.7,
-                "maxOutputTokens": 1024
-            }
+            "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1024}
         }
 
-        # 6. Chama Gemini Flash
         response = httpx.post(
             f"{GEMINI_URL}?key={GEMINI_API_KEY}",
             json=payload,
             timeout=30
         )
+
         if response.status_code != 200:
-            raise HTTPException(502, f"Gemini error: {response.text}")
+            raise HTTPException(502, f"Erro na API Gemini: {response.text}")
 
-        reply = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+        data = response.json()
+        candidates = data.get("candidates", [])
+        if not candidates:
+            raise HTTPException(502, "Gemini não retornou resposta. Tente novamente.")
 
-        # 7. Salva resposta do modelo
+        reply = candidates[0]["content"]["parts"][0]["text"]
+
+        # Salva resposta do modelo
         cursor.execute(
             "INSERT INTO chat_messages (session_id, role, content) VALUES (%s, 'model', %s)",
             (body.session_id, reply)
         )
         conn.commit()
+        cursor.execute("SELECT * FROM chat_messages WHERE id = LAST_INSERT_ID()")
+        ai_msg = cursor.fetchone()
 
-        return {"session_id": body.session_id, "reply": reply}
+        return [user_msg, ai_msg]
 
     except HTTPException:
         raise
@@ -290,3 +284,15 @@ def completions(body: CompletionRequest):
     finally:
         cursor.close()
         conn.close()
+
+
+# ── Completions (mantido por compatibilidade) ─────────────────────────────────
+
+@app.post("/chat/completions")
+def completions(body: CompletionRequest):
+    result = add_message(MessageCreate(
+        session_id=body.session_id, role='user', content=body.message
+    ))
+    msgs = result if isinstance(result, list) else [result]
+    reply = next((m['content'] for m in msgs if m.get('role') == 'model'), '')
+    return {"session_id": body.session_id, "reply": reply}

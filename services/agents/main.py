@@ -9,6 +9,38 @@ from database import get_db
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+LLM_MODELS = [
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-3.5-turbo",
+    "llama3-8b-8192",
+    "llama3-70b-8192",
+    "mixtral-8x7b-32768",
+]
+
+
+# ── Migration: garante coluna llm_model na tabela ─────────────────────────────
+@app.on_event("startup")
+def migrate():
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            ALTER TABLE agent_profiles
+            ADD COLUMN IF NOT EXISTS llm_model VARCHAR(100)
+            NOT NULL DEFAULT 'gemini-2.0-flash'
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
+
 
 class AgentCreate(BaseModel):
     name: str = 'Kea'
@@ -19,6 +51,7 @@ class AgentCreate(BaseModel):
     objections: str
     closing_style: str
     system_prompt: Optional[str] = None
+    llm_model: str = 'gemini-2.0-flash'
     is_active: bool = True
 
 
@@ -32,6 +65,7 @@ class AgentUpdate(BaseModel):
     objections: Optional[str] = None
     closing_style: Optional[str] = None
     system_prompt: Optional[str] = None
+    llm_model: Optional[str] = None
     is_active: Optional[bool] = None
 
 
@@ -41,7 +75,7 @@ class AgentDelete(BaseModel):
 
 @app.get("/agents/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "available_models": LLM_MODELS}
 
 
 @app.get("/agents")
@@ -75,6 +109,11 @@ def get_active_agent():
         conn.close()
 
 
+@app.get("/agents/models")
+def list_models():
+    return {"models": LLM_MODELS}
+
+
 @app.get("/agents/{agent_id}")
 def get_agent(agent_id: str):
     conn = get_db()
@@ -97,11 +136,12 @@ def create_agent(body: AgentCreate):
     try:
         cursor.execute(
             """INSERT INTO agent_profiles
-               (name, company, role, tone, services, objections, closing_style, system_prompt, is_active)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               (name, company, role, tone, services, objections, closing_style,
+                system_prompt, llm_model, is_active)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (body.name, body.company, body.role, body.tone,
              body.services, body.objections, body.closing_style,
-             body.system_prompt, body.is_active)
+             body.system_prompt, body.llm_model, body.is_active)
         )
         conn.commit()
         cursor.execute("SELECT * FROM agent_profiles ORDER BY created_at DESC LIMIT 1")

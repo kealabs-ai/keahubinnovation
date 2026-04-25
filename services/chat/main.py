@@ -182,25 +182,30 @@ def delete_session(body: SessionDelete):
 
 # ── Messages (salva + chama Gemini 2.0 Flash) ────────────────────────────────
 
-def _get_system_prompt(cursor) -> str:
+def _get_system_prompt(cursor) -> tuple[str, str]:
+    """Retorna (system_prompt, llm_model) do agente ativo."""
     cursor.execute(
-        "SELECT system_prompt, name, role, tone, services, objections, closing_style "
+        "SELECT system_prompt, name, role, tone, services, objections, closing_style, "
+        "COALESCE(llm_model, 'gemini-2.0-flash') as llm_model "
         "FROM agent_profiles WHERE is_active = 1 LIMIT 1"
     )
     agent = cursor.fetchone()
-    if agent and agent.get('system_prompt'):
-        return agent['system_prompt']
-    if agent:
+    if not agent:
         return (
-            f"Você é {agent['name']}, {agent['role']} da KeaLabs. "
-            f"Tom: {agent['tone']}. Serviços: {agent['services']}. "
-            f"Objeções: {agent['objections']}. Fechamento: {agent['closing_style']}."
+            "Você é Kea, consultora comercial da KeaLabs — empresa de tecnologia "
+            "especializada em sites web, automações, BI e agentes de IA. "
+            "Seja objetiva, consultiva e sempre termine com um próximo passo concreto.",
+            "gemini-2.0-flash"
         )
-    return (
-        "Você é Kea, consultora comercial da KeaLabs — empresa de tecnologia "
-        "especializada em sites web, automações, BI e agentes de IA. "
-        "Seja objetiva, consultiva e sempre termine com um próximo passo concreto."
+    model = agent.get('llm_model') or 'gemini-2.0-flash'
+    if agent.get('system_prompt'):
+        return agent['system_prompt'], model
+    prompt = (
+        f"Você é {agent['name']}, {agent['role']} da KeaLabs. "
+        f"Tom: {agent['tone']}. Serviços: {agent['services']}. "
+        f"Objeções: {agent['objections']}. Fechamento: {agent['closing_style']}."
     )
+    return prompt, model
 
 
 @app.post("/chat/messages", status_code=201)
@@ -222,11 +227,11 @@ def add_message(body: MessageCreate):
         cursor.execute("SELECT * FROM chat_messages WHERE id = LAST_INSERT_ID()")
         user_msg = cursor.fetchone()
 
-        # Só chama Gemini se for mensagem do usuário
+        # Só chama LLM se for mensagem do usuário
         if body.role != 'user':
             return [user_msg]
 
-        system_prompt = _get_system_prompt(cursor)
+        system_prompt, llm_model = _get_system_prompt(cursor)
 
         # Busca histórico completo
         cursor.execute(
@@ -236,7 +241,7 @@ def add_message(body: MessageCreate):
         )
         history = cursor.fetchall()
 
-        reply = _call_llm(system_prompt, history)
+        reply = _call_llm(system_prompt, history, llm_model)
 
         # Salva resposta do modelo
         cursor.execute(
@@ -261,13 +266,20 @@ def add_message(body: MessageCreate):
 
 # ── LLM dispatcher ───────────────────────────────────────────────────────────
 
-def _call_llm(system_prompt: str, history: list) -> str:
-    provider = LLM_PROVIDER.lower()
+def _call_llm(system_prompt: str, history: list, llm_model: str) -> str:
+    # Detecta provider pelo nome do modelo
+    model = llm_model or LLM_MODEL
+    if model.startswith('gemini'):
+        provider = 'gemini'
+    elif model.startswith('gpt'):
+        provider = 'openai'
+    else:
+        provider = 'groq'
 
     if provider == "gemini":
         if not GEMINI_API_KEY:
             raise HTTPException(500, "GEMINI_API_KEY não configurada.")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{LLM_MODEL}:generateContent?key={GEMINI_API_KEY}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
         payload = {
             "system_instruction": {"parts": [{"text": system_prompt}]},
             "contents": [{"role": m['role'], "parts": [{"text": m['content']}]} for m in history],
@@ -297,14 +309,14 @@ def _call_llm(system_prompt: str, history: list) -> str:
         resp = httpx.post(
             f"{base_url}/chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": LLM_MODEL, "messages": messages, "temperature": 0.7, "max_tokens": 1024},
+            json={"model": model, "messages": messages, "temperature": 0.7, "max_tokens": 1024},
             timeout=30
         )
         if resp.status_code != 200:
             raise HTTPException(502, f"Erro {provider}: {resp.text}")
         return resp.json()["choices"][0]["message"]["content"]
 
-    raise HTTPException(500, f"LLM_PROVIDER '{provider}' não suportado. Use: gemini, openai, groq.")
+    raise HTTPException(500, f"Modelo '{model}' não suportado. Use gemini-*, gpt-* ou modelos Groq.")
 
 
 # ── Completions (mantido por compatibilidade) ─────────────────────────────────

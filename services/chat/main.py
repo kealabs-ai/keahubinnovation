@@ -11,6 +11,12 @@ from database import get_db
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+LLM_MODELS = [
+    "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro",
+    "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo",
+    "llama3-8b-8192", "llama3-70b-8192", "mixtral-8x7b-32768",
+]
+
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")  # gemini | openai | groq
 LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.0-flash")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -23,6 +29,7 @@ class SessionCreate(BaseModel):
     agent_name: str = 'Kea'
     agent_role: str = 'Consultora Comercial'
     agent_tone: Literal['formal', 'friendly', 'technical', 'consultive'] = 'consultive'
+    llm_model: Optional[str] = None  # None = usa o modelo do agente ativo
 
 
 class SessionUpdate(BaseModel):
@@ -31,6 +38,7 @@ class SessionUpdate(BaseModel):
     agent_name: Optional[str] = None
     agent_role: Optional[str] = None
     agent_tone: Optional[Literal['formal', 'friendly', 'technical', 'consultive']] = None
+    llm_model: Optional[str] = None
 
 
 class SessionDelete(BaseModel):
@@ -50,12 +58,30 @@ class CompletionRequest(BaseModel):
 
 # ── Health ────────────────────────────────────────────────────────────────────
 
+@app.on_event("startup")
+def migrate():
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            ALTER TABLE chat_sessions
+            ADD COLUMN IF NOT EXISTS llm_model VARCHAR(100) NULL
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
+
+
 @app.get("/chat/health")
 def health():
     return {
         "status": "ok",
         "llm_provider": LLM_PROVIDER,
         "llm_model": LLM_MODEL,
+        "available_models": LLM_MODELS,
     }
 
 
@@ -109,15 +135,20 @@ def list_messages(session_id: str):
         conn.close()
 
 
+@app.get("/chat/models")
+def list_models():
+    return {"models": LLM_MODELS}
+
+
 @app.post("/chat/sessions", status_code=201)
 def create_session(body: SessionCreate):
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute(
-            """INSERT INTO chat_sessions (client_id, agent_name, agent_role, agent_tone)
-               VALUES (%s, %s, %s, %s)""",
-            (body.client_id, body.agent_name, body.agent_role, body.agent_tone)
+            """INSERT INTO chat_sessions (client_id, agent_name, agent_role, agent_tone, llm_model)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (body.client_id, body.agent_name, body.agent_role, body.agent_tone, body.llm_model)
         )
         conn.commit()
         cursor.execute(
@@ -182,22 +213,26 @@ def delete_session(body: SessionDelete):
 
 # ── Messages (salva + chama Gemini 2.0 Flash) ────────────────────────────────
 
-def _get_system_prompt(cursor) -> tuple[str, str]:
-    """Retorna (system_prompt, llm_model) do agente ativo."""
-    cursor.execute(
-        "SELECT system_prompt, name, role, tone, services, objections, closing_style, "
-        "COALESCE(llm_model, 'gemini-2.0-flash') as llm_model "
-        "FROM agent_profiles WHERE is_active = 1 LIMIT 1"
-    )
-    agent = cursor.fetchone()
+def _get_system_prompt(conn, override_model: Optional[str] = None) -> tuple[str, str]:
+    """Retorna (system_prompt, llm_model). override_model da sessão tem prioridade."""
+    cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute(
+            "SELECT system_prompt, name, role, tone, services, objections, closing_style, "
+            "COALESCE(llm_model, 'gemini-2.0-flash') as llm_model "
+            "FROM agent_profiles WHERE is_active = 1 LIMIT 1"
+        )
+        agent = cur.fetchone()
+    finally:
+        cur.close()
     if not agent:
         return (
             "Você é Kea, consultora comercial da KeaLabs — empresa de tecnologia "
             "especializada em sites web, automações, BI e agentes de IA. "
             "Seja objetiva, consultiva e sempre termine com um próximo passo concreto.",
-            "gemini-2.0-flash"
+            override_model or "gemini-2.0-flash"
         )
-    model = agent.get('llm_model') or 'gemini-2.0-flash'
+    model = override_model or agent.get('llm_model') or 'gemini-2.0-flash'
     if agent.get('system_prompt'):
         return agent['system_prompt'], model
     prompt = (
@@ -215,7 +250,8 @@ def add_message(body: MessageCreate):
     try:
         # Valida sessão
         cursor.execute("SELECT * FROM chat_sessions WHERE id = %s", (body.session_id,))
-        if not cursor.fetchone():
+        session = cursor.fetchone()
+        if not session:
             raise HTTPException(404, "Sessão não encontrada. Inicie uma nova conversa.")
 
         # Salva mensagem do usuário
@@ -231,7 +267,9 @@ def add_message(body: MessageCreate):
         if body.role != 'user':
             return [user_msg]
 
-        system_prompt, llm_model = _get_system_prompt(cursor)
+        # llm_model da sessão tem prioridade sobre o do agente ativo
+        session_model = session.get('llm_model') if session else None
+        system_prompt, llm_model = _get_system_prompt(conn, override_model=session_model)
 
         # Busca histórico completo
         cursor.execute(

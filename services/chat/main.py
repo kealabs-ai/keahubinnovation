@@ -311,18 +311,38 @@ def add_message(body: MessageCreate):
 # ── LLM dispatcher ───────────────────────────────────────────────────────────
 
 def _get_llm_key(conn, provider: str) -> str:
-    """Lê a API key do banco como fallback das env vars."""
-    env_map = {'gemini': GEMINI_API_KEY, 'openai': OPENAI_API_KEY, 'groq': GROQ_API_KEY, 'anthropic': ''}
-    if env_map.get(provider):
-        return env_map[provider]
-    db_key_map = {'gemini': 'llm_key_gemini', 'openai': 'llm_key_openai', 'groq': 'llm_key_groq', 'anthropic': 'llm_key_anthropic'}
-    cur = conn.cursor(dictionary=True)
-    try:
-        cur.execute("SELECT setting_value FROM system_settings WHERE setting_key = %s", (db_key_map[provider],))
-        row = cur.fetchone()
-        return row['setting_value'] if row else ''
-    finally:
-        cur.close()
+    """Lê a API key: env var > banco. Ignora strings vazias."""
+    db_key_map = {
+        'gemini':    'llm_key_gemini',
+        'openai':    'llm_key_openai',
+        'groq':      'llm_key_groq',
+        'anthropic': 'llm_key_anthropic',
+    }
+    env_var_map = {
+        'gemini':    'GEMINI_API_KEY',
+        'openai':    'OPENAI_API_KEY',
+        'groq':      'GROQ_API_KEY',
+        'anthropic': 'ANTHROPIC_API_KEY',
+    }
+    # Lê env var em tempo de execução (não no import)
+    env_key = os.getenv(env_var_map.get(provider, ''), '').strip()
+    if env_key:
+        return env_key
+    # Fallback: banco
+    if conn:
+        cur = conn.cursor(dictionary=True)
+        try:
+            cur.execute(
+                "SELECT setting_value FROM system_settings WHERE setting_key = %s",
+                (db_key_map[provider],)
+            )
+            row = cur.fetchone()
+            db_key = (row['setting_value'] or '').strip() if row else ''
+            if db_key:
+                return db_key
+        finally:
+            cur.close()
+    return ''
 
 
 def _call_llm(system_prompt: str, history: list, llm_model: str, conn=None) -> str:

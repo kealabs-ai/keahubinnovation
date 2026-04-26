@@ -2,18 +2,20 @@ pipeline {
     agent any
 
     environment {
-        PROJETO        = 'keahubinnovation'
-        STACK_NAME     = 'keahubinnovation'
-        DEPLOY_PATH    = '/var/jenkins_home/apps/keahubinnovation'
-        GIT_REPO       = 'https://github.com/kealabs-ai/keahubinnovation.git'
-        GIT_BRANCH     = 'master'
-        DOCKER         = '/var/jenkins_home/docker'
-        DOCKER_COMPOSE = '/var/jenkins_home/docker-compose'
+        PROJETO          = 'keahubinnovation'
+        STACK_NAME       = 'keahubinnovation'
+        DEPLOY_PATH      = '/var/jenkins_home/apps/keahubinnovation'
+        GIT_REPO         = 'https://github.com/kealabs-ai/keahubinnovation.git'
+        GIT_BRANCH       = 'master'
+        DOCKER           = '/var/jenkins_home/docker'
+        DOCKER_COMPOSE   = '/var/jenkins_home/docker-compose'
+
+        // Valores não-sensíveis — direto no environment
+        DB_PORT          = '3306'
         JWT_EXPIRY_HOURS = '8'
 
-        // Credenciais injetadas pelo Jenkins (configuradas em Manage Jenkins > Environment)
+        // Secrets — injetados pelo Jenkins Credentials
         DB_HOST           = credentials('DB_HOST')
-        DB_PORT           = credentials('DB_PORT')
         DB_NAME           = credentials('DB_NAME')
         DB_USER           = credentials('DB_USER')
         DB_PASSWORD       = credentials('DB_PASSWORD')

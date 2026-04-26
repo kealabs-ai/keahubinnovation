@@ -12,7 +12,13 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 LLM_MODELS = [
-    "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-2.5-flash-preview-05-20",
+    "gemini-2.5-pro-preview-06-05",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash-8b-latest",
+    "gemini-1.5-pro-latest",
     "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo",
     "llama3-8b-8192", "llama3-70b-8192", "mixtral-8x7b-32768",
 ]

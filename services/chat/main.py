@@ -365,6 +365,8 @@ def _call_llm(system_prompt: str, history: list, llm_model: str, settings: dict)
 
     if provider == "gemini":
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        import logging
+        logging.warning(f"[GEMINI] model={model} key_preview={api_key[:10] if api_key else 'EMPTY'}... key_len={len(api_key)}")
         payload = {
             "system_instruction": {"parts": [{"text": system_prompt}]},
             "contents": [{"role": m['role'], "parts": [{"text": m['content']}]} for m in history],

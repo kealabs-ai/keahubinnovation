@@ -9,6 +9,19 @@ pipeline {
         GIT_BRANCH     = 'master'
         DOCKER         = '/var/jenkins_home/docker'
         DOCKER_COMPOSE = '/var/jenkins_home/docker-compose'
+
+        // Credenciais injetadas pelo Jenkins (configuradas em Manage Jenkins > Environment)
+        DB_HOST            = credentials('DB_HOST')
+        DB_PORT            = credentials('DB_PORT')
+        DB_NAME            = credentials('DB_NAME')
+        DB_USER            = credentials('DB_USER')
+        DB_PASSWORD        = credentials('DB_PASSWORD')
+        JWT_SECRET         = credentials('JWT_SECRET')
+        JWT_EXPIRY_HOURS   = credentials('JWT_EXPIRY_HOURS')
+        GEMINI_API_KEY     = credentials('GEMINI_API_KEY')
+        OPENAI_API_KEY     = credentials('OPENAI_API_KEY')
+        GROQ_API_KEY       = credentials('GROQ_API_KEY')
+        ANTHROPIC_API_KEY  = credentials('ANTHROPIC_API_KEY')
     }
 
     stages {
@@ -34,6 +47,22 @@ pipeline {
                     else
                         git clone -b $GIT_BRANCH $GIT_REPO .
                     fi
+
+                    # Gera .env a partir das credenciais do Jenkins
+                    cat > $DEPLOY_PATH/.env <<EOF
+DB_HOST=${DB_HOST}
+DB_PORT=${DB_PORT}
+DB_NAME=${DB_NAME}
+DB_USER=${DB_USER}
+DB_PASSWORD=${DB_PASSWORD}
+JWT_SECRET=${JWT_SECRET}
+JWT_EXPIRY_HOURS=${JWT_EXPIRY_HOURS}
+GEMINI_API_KEY=${GEMINI_API_KEY}
+OPENAI_API_KEY=${OPENAI_API_KEY}
+GROQ_API_KEY=${GROQ_API_KEY}
+ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+EOF
+                    echo "  ✔ .env gerado"
                 '''
             }
         }
@@ -138,7 +167,8 @@ pipeline {
                     cd $DEPLOY_PATH
 
                     echo "▶ Fazendo deploy da stack: $STACK_NAME"
-                    $DOCKER stack deploy \
+                    env $(cat .env | grep -v '^#' | xargs) \
+                        $DOCKER stack deploy \
                         -c docker-compose.yml \
                         $STACK_NAME \
                         --with-registry-auth

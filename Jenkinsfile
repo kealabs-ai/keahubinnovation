@@ -9,21 +9,18 @@ pipeline {
         GIT_BRANCH       = 'master'
         DOCKER           = '/var/jenkins_home/docker'
         DOCKER_COMPOSE   = '/var/jenkins_home/docker-compose'
-
-        // Valores não-sensíveis — direto no environment
         DB_PORT          = '3306'
         JWT_EXPIRY_HOURS = '8'
-
-        // Secrets — injetados pelo Jenkins Credentials
-        DB_HOST           = credentials('DB_HOST')
-        DB_NAME           = credentials('DB_NAME')
-        DB_USER           = credentials('DB_USER')
-        DB_PASSWORD       = credentials('DB_PASSWORD')
-        JWT_SECRET        = credentials('JWT_SECRET')
-        GEMINI_API_KEY    = credentials('GEMINI_API_KEY')
-        OPENAI_API_KEY    = credentials('OPENAI_API_KEY')
-        GROQ_API_KEY      = credentials('GROQ_API_KEY')
-        ANTHROPIC_API_KEY = credentials('ANTHROPIC_API_KEY')
+        // Secrets lidos das variáveis de ambiente do EasyPanel
+        DB_HOST           = "${env.DB_HOST}"
+        DB_NAME           = "${env.DB_NAME}"
+        DB_USER           = "${env.DB_USER}"
+        DB_PASSWORD       = "${env.DB_PASSWORD}"
+        JWT_SECRET        = "${env.JWT_SECRET}"
+        GEMINI_API_KEY    = "${env.GEMINI_API_KEY}"
+        OPENAI_API_KEY    = "${env.OPENAI_API_KEY ?: ''}"
+        GROQ_API_KEY      = "${env.GROQ_API_KEY ?: ''}"
+        ANTHROPIC_API_KEY = "${env.ANTHROPIC_API_KEY ?: ''}"
     }
 
     stages {

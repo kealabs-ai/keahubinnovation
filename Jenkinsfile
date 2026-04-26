@@ -9,18 +9,6 @@ pipeline {
         GIT_BRANCH       = 'master'
         DOCKER           = '/var/jenkins_home/docker'
         DOCKER_COMPOSE   = '/var/jenkins_home/docker-compose'
-        DB_PORT          = '3306'
-        JWT_EXPIRY_HOURS = '8'
-        // Secrets lidos das variáveis de ambiente do EasyPanel
-        DB_HOST           = "${env.DB_HOST}"
-        DB_NAME           = "${env.DB_NAME}"
-        DB_USER           = "${env.DB_USER}"
-        DB_PASSWORD       = "${env.DB_PASSWORD}"
-        JWT_SECRET        = "${env.JWT_SECRET}"
-        GEMINI_API_KEY    = "${env.GEMINI_API_KEY}"
-        OPENAI_API_KEY    = "${env.OPENAI_API_KEY ?: ''}"
-        GROQ_API_KEY      = "${env.GROQ_API_KEY ?: ''}"
-        ANTHROPIC_API_KEY = "${env.ANTHROPIC_API_KEY ?: ''}"
     }
 
     stages {
@@ -47,21 +35,22 @@ pipeline {
                         git clone -b $GIT_BRANCH $GIT_REPO .
                     fi
 
-                    # Gera .env a partir das credenciais do Jenkins
-                    cat > $DEPLOY_PATH/.env <<EOF
-DB_HOST=${DB_HOST}
-DB_PORT=${DB_PORT}
-DB_NAME=${DB_NAME}
-DB_USER=${DB_USER}
-DB_PASSWORD=${DB_PASSWORD}
-JWT_SECRET=${JWT_SECRET}
-JWT_EXPIRY_HOURS=${JWT_EXPIRY_HOURS}
-GEMINI_API_KEY=${GEMINI_API_KEY}
-OPENAI_API_KEY=${OPENAI_API_KEY}
-GROQ_API_KEY=${GROQ_API_KEY}
-ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+                    # Gera .env a partir das variáveis de ambiente do EasyPanel
+                    cat > $DEPLOY_PATH/.env << EOF
+DB_HOST=$DB_HOST
+DB_PORT=${DB_PORT:-3306}
+DB_NAME=$DB_NAME
+DB_USER=$DB_USER
+DB_PASSWORD=$DB_PASSWORD
+JWT_SECRET=$JWT_SECRET
+JWT_EXPIRY_HOURS=${JWT_EXPIRY_HOURS:-8}
+GEMINI_API_KEY=$GEMINI_API_KEY
+OPENAI_API_KEY=${OPENAI_API_KEY:-}
+GROQ_API_KEY=${GROQ_API_KEY:-}
+ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
 EOF
                     echo "  ✔ .env gerado"
+                    echo "  DB_HOST=$DB_HOST"
                 '''
             }
         }

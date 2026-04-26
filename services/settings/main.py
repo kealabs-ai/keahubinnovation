@@ -39,6 +39,22 @@ def health():
     return {"status": "ok"}
 
 
+@app.on_event("startup")
+def migrate():
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            ALTER TABLE system_settings
+            MODIFY COLUMN setting_value TEXT NOT NULL
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
+
 @app.get("/settings")
 def list_settings():
     conn = get_db()

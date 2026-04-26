@@ -4,12 +4,12 @@ services:
   clients-service:
     image: keahubinnovation/clients:latest
     environment:
-      DB_HOST: "srv1078.hstgr.io"
-      DB_PORT: "3306"
-      DB_NAME: "u549746795_kealabs"
-      DB_USER: "u549746795_kealabs"
-      DB_PASSWORD: "Sally2025@!"
-      JWT_SECRET: "your-secret-key-change-in-production"
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: "${DB_PORT}"
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.keahubinnovation-clients.rule=(Host(`srv1023256.hstgr.cloud`) || Host(`kealabs.cloud`) || Host(`www.kealabs.cloud`)) && PathPrefix(`/k1/api/clients`)"
@@ -35,12 +35,12 @@ services:
   quotes-service:
     image: keahubinnovation/quotes:latest
     environment:
-      DB_HOST: "srv1078.hstgr.io"
-      DB_PORT: "3306"
-      DB_NAME: "u549746795_kealabs"
-      DB_USER: "u549746795_kealabs"
-      DB_PASSWORD: "Sally2025@!"
-      JWT_SECRET: "your-secret-key-change-in-production"
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: "${DB_PORT}"
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.keahubinnovation-quotes.rule=(Host(`srv1023256.hstgr.cloud`) || Host(`kealabs.cloud`) || Host(`www.kealabs.cloud`)) && PathPrefix(`/k1/api/quotes`)"
@@ -66,13 +66,16 @@ services:
   chat-service:
     image: keahubinnovation/chat:latest
     environment:
-      DB_HOST: "srv1078.hstgr.io"
-      DB_PORT: "3306"
-      DB_NAME: "u549746795_kealabs"
-      DB_USER: "u549746795_kealabs"
-      DB_PASSWORD: "Sally2025@!"
-      JWT_SECRET: "your-secret-key-change-in-production"
-      GEMINI_API_KEY: "AIzaSyBWJ6kGFjXvtC6MfjwlBHihR2tDXHRFXNM"
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: "${DB_PORT}"
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      GROQ_API_KEY: "${GROQ_API_KEY}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.keahubinnovation-chat.rule=(Host(`srv1023256.hstgr.cloud`) || Host(`kealabs.cloud`) || Host(`www.kealabs.cloud`)) && PathPrefix(`/k1/api/chat`)"
@@ -98,12 +101,12 @@ services:
   settings-service:
     image: keahubinnovation/settings:latest
     environment:
-      DB_HOST: "srv1078.hstgr.io"
-      DB_PORT: "3306"
-      DB_NAME: "u549746795_kealabs"
-      DB_USER: "u549746795_kealabs"
-      DB_PASSWORD: "Sally2025@!"
-      JWT_SECRET: "your-secret-key-change-in-production"
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: "${DB_PORT}"
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.keahubinnovation-settings.rule=(Host(`srv1023256.hstgr.cloud`) || Host(`kealabs.cloud`) || Host(`www.kealabs.cloud`)) && PathPrefix(`/k1/api/settings`)"
@@ -129,12 +132,12 @@ services:
   agents-service:
     image: keahubinnovation/agents:latest
     environment:
-      DB_HOST: "srv1078.hstgr.io"
-      DB_PORT: "3306"
-      DB_NAME: "u549746795_kealabs"
-      DB_USER: "u549746795_kealabs"
-      DB_PASSWORD: "Sally2025@!"
-      JWT_SECRET: "your-secret-key-change-in-production"
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: "${DB_PORT}"
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.keahubinnovation-agents.rule=(Host(`srv1023256.hstgr.cloud`) || Host(`kealabs.cloud`) || Host(`www.kealabs.cloud`)) && PathPrefix(`/k1/api/agents`)"
@@ -160,13 +163,13 @@ services:
   auth-service:
     image: keahubinnovation/auth:latest
     environment:
-      DB_HOST: "srv1078.hstgr.io"
-      DB_PORT: "3306"
-      DB_NAME: "u549746795_kealabs"
-      DB_USER: "u549746795_kealabs"
-      DB_PASSWORD: "Sally2025@!"
-      JWT_SECRET: "your-secret-key-change-in-production"
-      JWT_EXPIRY_HOURS: "8"
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: "${DB_PORT}"
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET}"
+      JWT_EXPIRY_HOURS: "${JWT_EXPIRY_HOURS}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.keahubinnovation-auth.rule=(Host(`srv1023256.hstgr.cloud`) || Host(`kealabs.cloud`) || Host(`www.kealabs.cloud`)) && PathPrefix(`/k1/api/auth`)"
@@ -192,12 +195,12 @@ services:
   prospects-service:
     image: keahubinnovation/prospects:latest
     environment:
-      DB_HOST: "srv1078.hstgr.io"
-      DB_PORT: "3306"
-      DB_NAME: "u549746795_kealabs"
-      DB_USER: "u549746795_kealabs"
-      DB_PASSWORD: "Sally2025@!"
-      JWT_SECRET: "your-secret-key-change-in-production"
+      DB_HOST: "${DB_HOST}"
+      DB_PORT: "${DB_PORT}"
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+      JWT_SECRET: "${JWT_SECRET}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.keahubinnovation-prospects.rule=(Host(`srv1023256.hstgr.cloud`) || Host(`kealabs.cloud`) || Host(`www.kealabs.cloud`)) && PathPrefix(`/k1/api/prospects`)"

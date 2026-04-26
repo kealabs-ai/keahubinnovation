@@ -139,13 +139,36 @@ def get_llm_keys():
             f"SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ({placeholders})",
             keys
         )
-        rows = {r['setting_key']: r['setting_value'] for r in cursor.fetchall()}
+        rows = {r['setting_key']: (r['setting_value'] or '').strip() for r in cursor.fetchall()}
         return {
             provider: {
                 'configured': bool(rows.get(db_key)),
                 'preview': (rows[db_key][:8] + '...' if rows.get(db_key) else None)
             }
             for provider, db_key in LLM_KEY_MAP.items()
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.get("/settings/llm-keys/values")
+def get_llm_key_values():
+    """Retorna os valores reais das keys e modelo ativo (uso interno entre microserviços)."""
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        lookup_keys = list(LLM_KEY_MAP.values()) + ['llm_model', 'llm_provider']
+        placeholders = ', '.join(['%s'] * len(lookup_keys))
+        cursor.execute(
+            f"SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ({placeholders})",
+            lookup_keys
+        )
+        rows = {r['setting_key']: (r['setting_value'] or '').strip() for r in cursor.fetchall()}
+        return {
+            **{provider: rows.get(db_key, '') for provider, db_key in LLM_KEY_MAP.items()},
+            'llm_model':    rows.get('llm_model', 'gemini-2.0-flash'),
+            'llm_provider': rows.get('llm_provider', 'gemini'),
         }
     finally:
         cursor.close()

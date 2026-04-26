@@ -23,7 +23,7 @@ LLM_MODELS = [
     "llama3-8b-8192", "llama3-70b-8192", "mixtral-8x7b-32768",
 ]
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")  # gemini | openai | groq
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
 LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.0-flash")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -219,8 +219,8 @@ def delete_session(body: SessionDelete):
 
 # ── Messages (salva + chama Gemini 2.0 Flash) ────────────────────────────────
 
-def _get_system_prompt(conn, override_model: Optional[str] = None) -> tuple[str, str]:
-    """Retorna (system_prompt, llm_model). override_model da sessão tem prioridade."""
+def _get_system_prompt(conn, settings: dict, override_model: Optional[str] = None) -> tuple[str, str]:
+    """Retorna (system_prompt, llm_model). Prioridade: override > agente > system_settings."""
     cur = conn.cursor(dictionary=True)
     try:
         cur.execute(
@@ -231,14 +231,15 @@ def _get_system_prompt(conn, override_model: Optional[str] = None) -> tuple[str,
         agent = cur.fetchone()
     finally:
         cur.close()
+    settings_model = settings.get('llm_model', 'gemini-2.0-flash') or 'gemini-2.0-flash'
     if not agent:
         return (
             "Você é Kea, consultora comercial da KeaLabs — empresa de tecnologia "
             "especializada em sites web, automações, BI e agentes de IA. "
             "Seja objetiva, consultiva e sempre termine com um próximo passo concreto.",
-            override_model or "gemini-2.0-flash"
+            override_model or settings_model
         )
-    model = override_model or agent.get('llm_model') or 'gemini-2.0-flash'
+    model = override_model or agent.get('llm_model') or settings_model
     if agent.get('system_prompt'):
         return agent['system_prompt'], model
     prompt = (
@@ -273,9 +274,12 @@ def add_message(body: MessageCreate):
         if body.role != 'user':
             return [user_msg]
 
-        # llm_model da sessão tem prioridade sobre o do agente ativo
+        # Carrega settings do banco (llm_model, api keys)
+        settings = _get_settings_config(conn)
+
+        # llm_model da sessão > agente ativo > system_settings
         session_model = session.get('llm_model') if session else None
-        system_prompt, llm_model = _get_system_prompt(conn, override_model=session_model)
+        system_prompt, llm_model = _get_system_prompt(conn, settings, override_model=session_model)
 
         # Busca histórico completo
         cursor.execute(
@@ -285,7 +289,7 @@ def add_message(body: MessageCreate):
         )
         history = cursor.fetchall()
 
-        reply = _call_llm(system_prompt, history, llm_model, conn)
+        reply = _call_llm(system_prompt, history, llm_model, settings)
 
         # Salva resposta do modelo
         cursor.execute(
@@ -310,42 +314,40 @@ def add_message(body: MessageCreate):
 
 # ── LLM dispatcher ───────────────────────────────────────────────────────────
 
-def _get_llm_key(conn, provider: str) -> str:
+def _get_settings_config(conn) -> dict:
+    """Lê llm_model, llm_key_* do banco (system_settings)."""
+    cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute(
+            "SELECT setting_key, setting_value FROM system_settings "
+            "WHERE setting_key IN ('llm_model','llm_key_gemini','llm_key_openai','llm_key_groq','llm_key_anthropic')"
+        )
+        return {r['setting_key']: (r['setting_value'] or '').strip() for r in cur.fetchall()}
+    finally:
+        cur.close()
+
+
+def _get_llm_key(provider: str, settings: dict) -> str:
     """Lê a API key: env var > banco. Ignora strings vazias."""
-    db_key_map = {
-        'gemini':    'llm_key_gemini',
-        'openai':    'llm_key_openai',
-        'groq':      'llm_key_groq',
-        'anthropic': 'llm_key_anthropic',
-    }
     env_var_map = {
         'gemini':    'GEMINI_API_KEY',
         'openai':    'OPENAI_API_KEY',
         'groq':      'GROQ_API_KEY',
         'anthropic': 'ANTHROPIC_API_KEY',
     }
-    # Lê env var em tempo de execução (não no import)
+    db_key_map = {
+        'gemini':    'llm_key_gemini',
+        'openai':    'llm_key_openai',
+        'groq':      'llm_key_groq',
+        'anthropic': 'llm_key_anthropic',
+    }
     env_key = os.getenv(env_var_map.get(provider, ''), '').strip()
     if env_key:
         return env_key
-    # Fallback: banco
-    if conn:
-        cur = conn.cursor(dictionary=True)
-        try:
-            cur.execute(
-                "SELECT setting_value FROM system_settings WHERE setting_key = %s",
-                (db_key_map[provider],)
-            )
-            row = cur.fetchone()
-            db_key = (row['setting_value'] or '').strip() if row else ''
-            if db_key:
-                return db_key
-        finally:
-            cur.close()
-    return ''
+    return settings.get(db_key_map.get(provider, ''), '')
 
 
-def _call_llm(system_prompt: str, history: list, llm_model: str, conn=None) -> str:
+def _call_llm(system_prompt: str, history: list, llm_model: str, settings: dict) -> str:
     model = llm_model or LLM_MODEL
     if model.startswith('gemini'):
         provider = 'gemini'
@@ -356,10 +358,12 @@ def _call_llm(system_prompt: str, history: list, llm_model: str, conn=None) -> s
     else:
         provider = 'groq'
 
+    api_key = _get_llm_key(provider, settings)
+    if not api_key:
+        names = {'gemini': 'Google Gemini', 'openai': 'OpenAI', 'groq': 'Groq', 'anthropic': 'Anthropic'}
+        raise HTTPException(500, f"API Key do {names[provider]} não configurada. Acesse Configurações > Modelo de IA para adicionar.")
+
     if provider == "gemini":
-        api_key = _get_llm_key(conn, 'gemini') if conn else GEMINI_API_KEY
-        if not api_key:
-            raise HTTPException(500, "API Key do Google Gemini não configurada. Acesse Configurações > Modelo de IA para adicionar.")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         payload = {
             "system_instruction": {"parts": [{"text": system_prompt}]},
@@ -374,33 +378,24 @@ def _call_llm(system_prompt: str, history: list, llm_model: str, conn=None) -> s
             raise HTTPException(502, "Gemini não retornou resposta.")
         return candidates[0]["content"]["parts"][0]["text"]
 
-    if provider in ("openai", "groq", "anthropic"):
-        api_key = _get_llm_key(conn, provider) if conn else (
-            OPENAI_API_KEY if provider == 'openai' else GROQ_API_KEY
-        )
-        if not api_key:
-            names = {'openai': 'OpenAI', 'groq': 'Groq', 'anthropic': 'Anthropic'}
-            raise HTTPException(500, f"API Key do {names[provider]} não configurada. Acesse Configurações > Modelo de IA para adicionar.")
-        base_url = {
-            'openai':    'https://api.openai.com/v1',
-            'groq':      'https://api.groq.com/openai/v1',
-            'anthropic': 'https://api.anthropic.com/v1',
-        }[provider]
-        messages = [{"role": "system", "content": system_prompt}] + [
-            {"role": "assistant" if m['role'] == 'model' else m['role'], "content": m['content']}
-            for m in history
-        ]
-        resp = httpx.post(
-            f"{base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": model, "messages": messages, "temperature": 0.7, "max_tokens": 1024},
-            timeout=30
-        )
-        if resp.status_code != 200:
-            raise HTTPException(502, f"Erro {provider}: {resp.text}")
-        return resp.json()["choices"][0]["message"]["content"]
-
-    raise HTTPException(500, f"Modelo '{model}' não suportado.")
+    base_url = {
+        'openai':    'https://api.openai.com/v1',
+        'groq':      'https://api.groq.com/openai/v1',
+        'anthropic': 'https://api.anthropic.com/v1',
+    }[provider]
+    messages = [{"role": "system", "content": system_prompt}] + [
+        {"role": "assistant" if m['role'] == 'model' else m['role'], "content": m['content']}
+        for m in history
+    ]
+    resp = httpx.post(
+        f"{base_url}/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json={"model": model, "messages": messages, "temperature": 0.7, "max_tokens": 1024},
+        timeout=30
+    )
+    if resp.status_code != 200:
+        raise HTTPException(502, f"Erro {provider}: {resp.text}")
+    return resp.json()["choices"][0]["message"]["content"]
 
 
 # ── Completions (mantido por compatibilidade) ─────────────────────────────────

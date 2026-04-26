@@ -326,19 +326,20 @@ def _get_llm_key(conn, provider: str) -> str:
 
 
 def _call_llm(system_prompt: str, history: list, llm_model: str, conn=None) -> str:
-    # Detecta provider pelo nome do modelo
     model = llm_model or LLM_MODEL
     if model.startswith('gemini'):
         provider = 'gemini'
     elif model.startswith('gpt'):
         provider = 'openai'
+    elif model.startswith('claude'):
+        provider = 'anthropic'
     else:
         provider = 'groq'
 
     if provider == "gemini":
         api_key = _get_llm_key(conn, 'gemini') if conn else GEMINI_API_KEY
         if not api_key:
-            raise HTTPException(500, "GEMINI_API_KEY não configurada.")
+            raise HTTPException(500, "API Key do Google Gemini não configurada. Acesse Configurações > Modelo de IA para adicionar.")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         payload = {
             "system_instruction": {"parts": [{"text": system_prompt}]},
@@ -353,15 +354,18 @@ def _call_llm(system_prompt: str, history: list, llm_model: str, conn=None) -> s
             raise HTTPException(502, "Gemini não retornou resposta.")
         return candidates[0]["content"]["parts"][0]["text"]
 
-    if provider in ("openai", "groq"):
-        api_key = _get_llm_key(conn, provider) if conn else (OPENAI_API_KEY if provider == 'openai' else GROQ_API_KEY)
-        if not api_key:
-            raise HTTPException(500, f"{provider.upper()}_API_KEY não configurada.")
-        base_url = (
-            "https://api.openai.com/v1"
-            if provider == "openai"
-            else "https://api.groq.com/openai/v1"
+    if provider in ("openai", "groq", "anthropic"):
+        api_key = _get_llm_key(conn, provider) if conn else (
+            OPENAI_API_KEY if provider == 'openai' else GROQ_API_KEY
         )
+        if not api_key:
+            names = {'openai': 'OpenAI', 'groq': 'Groq', 'anthropic': 'Anthropic'}
+            raise HTTPException(500, f"API Key do {names[provider]} não configurada. Acesse Configurações > Modelo de IA para adicionar.")
+        base_url = {
+            'openai':    'https://api.openai.com/v1',
+            'groq':      'https://api.groq.com/openai/v1',
+            'anthropic': 'https://api.anthropic.com/v1',
+        }[provider]
         messages = [{"role": "system", "content": system_prompt}] + [
             {"role": "assistant" if m['role'] == 'model' else m['role'], "content": m['content']}
             for m in history
@@ -376,7 +380,7 @@ def _call_llm(system_prompt: str, history: list, llm_model: str, conn=None) -> s
             raise HTTPException(502, f"Erro {provider}: {resp.text}")
         return resp.json()["choices"][0]["message"]["content"]
 
-    raise HTTPException(500, f"Modelo '{model}' não suportado. Use gemini-*, gpt-* ou modelos Groq.")
+    raise HTTPException(500, f"Modelo '{model}' não suportado.")
 
 
 # ── Completions (mantido por compatibilidade) ─────────────────────────────────

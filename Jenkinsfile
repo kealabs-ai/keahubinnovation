@@ -9,19 +9,19 @@ pipeline {
         GIT_BRANCH     = 'master'
         DOCKER         = '/var/jenkins_home/docker'
         DOCKER_COMPOSE = '/var/jenkins_home/docker-compose'
+        JWT_EXPIRY_HOURS = '8'
 
         // Credenciais injetadas pelo Jenkins (configuradas em Manage Jenkins > Environment)
-        DB_HOST            = credentials('DB_HOST')
-        DB_PORT            = credentials('DB_PORT')
-        DB_NAME            = credentials('DB_NAME')
-        DB_USER            = credentials('DB_USER')
-        DB_PASSWORD        = credentials('DB_PASSWORD')
-        JWT_SECRET         = credentials('JWT_SECRET')
-        JWT_EXPIRY_HOURS   = credentials('JWT_EXPIRY_HOURS')
-        GEMINI_API_KEY     = credentials('GEMINI_API_KEY')
-        OPENAI_API_KEY     = credentials('OPENAI_API_KEY')
-        GROQ_API_KEY       = credentials('GROQ_API_KEY')
-        ANTHROPIC_API_KEY  = credentials('ANTHROPIC_API_KEY')
+        DB_HOST           = credentials('DB_HOST')
+        DB_PORT           = credentials('DB_PORT')
+        DB_NAME           = credentials('DB_NAME')
+        DB_USER           = credentials('DB_USER')
+        DB_PASSWORD       = credentials('DB_PASSWORD')
+        JWT_SECRET        = credentials('JWT_SECRET')
+        GEMINI_API_KEY    = credentials('GEMINI_API_KEY')
+        OPENAI_API_KEY    = credentials('OPENAI_API_KEY')
+        GROQ_API_KEY      = credentials('GROQ_API_KEY')
+        ANTHROPIC_API_KEY = credentials('ANTHROPIC_API_KEY')
     }
 
     stages {
@@ -225,10 +225,12 @@ EOF
             echo '❌ Falha no deploy KeaHub Innovation Services!'
         }
         always {
-            sh '''
-                echo "▶ Estado final da stack:"
-                /var/jenkins_home/docker stack ps keahubinnovation --no-trunc || true
-            '''
+            node('built-in') {
+                sh '''
+                    echo "▶ Estado final da stack:"
+                    /var/jenkins_home/docker stack ps keahubinnovation --no-trunc || true
+                '''
+            }
         }
     }
 }

@@ -33,6 +33,8 @@ class LLMKeysUpsert(BaseModel):
     groq:      Optional[str] = None
     anthropic: Optional[str] = None
 
+    model_config = {'extra': 'ignore'}
+
 
 @app.get("/settings/health")
 def health():

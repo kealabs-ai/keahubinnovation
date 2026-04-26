@@ -13,7 +13,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 security = HTTPBearer()
 JWT_SECRET = os.getenv("JWT_SECRET", "changeme")
-JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", 8))
+JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS") or 8)
 
 
 # ── Models ────────────────────────────────────────────────────────────────────

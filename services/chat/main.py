@@ -285,7 +285,7 @@ def add_message(body: MessageCreate):
         )
         history = cursor.fetchall()
 
-        reply = _call_llm(system_prompt, history, llm_model)
+        reply = _call_llm(system_prompt, history, llm_model, conn)
 
         # Salva resposta do modelo
         cursor.execute(
@@ -310,7 +310,22 @@ def add_message(body: MessageCreate):
 
 # ── LLM dispatcher ───────────────────────────────────────────────────────────
 
-def _call_llm(system_prompt: str, history: list, llm_model: str) -> str:
+def _get_llm_key(conn, provider: str) -> str:
+    """Lê a API key do banco como fallback das env vars."""
+    env_map = {'gemini': GEMINI_API_KEY, 'openai': OPENAI_API_KEY, 'groq': GROQ_API_KEY, 'anthropic': ''}
+    if env_map.get(provider):
+        return env_map[provider]
+    db_key_map = {'gemini': 'llm_key_gemini', 'openai': 'llm_key_openai', 'groq': 'llm_key_groq', 'anthropic': 'llm_key_anthropic'}
+    cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT setting_value FROM system_settings WHERE setting_key = %s", (db_key_map[provider],))
+        row = cur.fetchone()
+        return row['setting_value'] if row else ''
+    finally:
+        cur.close()
+
+
+def _call_llm(system_prompt: str, history: list, llm_model: str, conn=None) -> str:
     # Detecta provider pelo nome do modelo
     model = llm_model or LLM_MODEL
     if model.startswith('gemini'):
@@ -321,9 +336,10 @@ def _call_llm(system_prompt: str, history: list, llm_model: str) -> str:
         provider = 'groq'
 
     if provider == "gemini":
-        if not GEMINI_API_KEY:
+        api_key = _get_llm_key(conn, 'gemini') if conn else GEMINI_API_KEY
+        if not api_key:
             raise HTTPException(500, "GEMINI_API_KEY não configurada.")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         payload = {
             "system_instruction": {"parts": [{"text": system_prompt}]},
             "contents": [{"role": m['role'], "parts": [{"text": m['content']}]} for m in history],
@@ -338,7 +354,7 @@ def _call_llm(system_prompt: str, history: list, llm_model: str) -> str:
         return candidates[0]["content"]["parts"][0]["text"]
 
     if provider in ("openai", "groq"):
-        api_key = OPENAI_API_KEY if provider == "openai" else GROQ_API_KEY
+        api_key = _get_llm_key(conn, provider) if conn else (OPENAI_API_KEY if provider == 'openai' else GROQ_API_KEY)
         if not api_key:
             raise HTTPException(500, f"{provider.upper()}_API_KEY não configurada.")
         base_url = (

@@ -9,6 +9,13 @@ from database import get_db
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
+LLM_KEY_MAP = {
+    'gemini':    'llm_key_gemini',
+    'openai':    'llm_key_openai',
+    'groq':      'llm_key_groq',
+    'anthropic': 'llm_key_anthropic',
+}
+
 
 class SettingUpsert(BaseModel):
     setting_key: str
@@ -18,6 +25,13 @@ class SettingUpsert(BaseModel):
 
 class SettingDelete(BaseModel):
     setting_key: str
+
+
+class LLMKeysUpsert(BaseModel):
+    gemini:    Optional[str] = None
+    openai:    Optional[str] = None
+    groq:      Optional[str] = None
+    anthropic: Optional[str] = None
 
 
 @app.get("/settings/health")
@@ -85,6 +99,60 @@ def delete_setting(body: SettingDelete):
         return {"deleted": True, "setting_key": body.setting_key}
     except HTTPException:
         raise
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(400, str(e))
+    finally:
+        cursor.close()
+        conn.close()
+
+
+# ── LLM Keys ─────────────────────────────────────────────────────────────────
+
+@app.get("/settings/llm-keys")
+def get_llm_keys():
+    """Retorna quais providers têm key configurada (sem expor o valor)."""
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        keys = list(LLM_KEY_MAP.values())
+        placeholders = ', '.join(['%s'] * len(keys))
+        cursor.execute(
+            f"SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ({placeholders})",
+            keys
+        )
+        rows = {r['setting_key']: r['setting_value'] for r in cursor.fetchall()}
+        return {
+            provider: {
+                'configured': bool(rows.get(db_key)),
+                'preview': (rows[db_key][:8] + '...' if rows.get(db_key) else None)
+            }
+            for provider, db_key in LLM_KEY_MAP.items()
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.post("/settings/llm-keys")
+def upsert_llm_keys(body: LLMKeysUpsert):
+    """Salva as API keys dos providers LLM no banco."""
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        saved = []
+        for provider, value in body.model_dump().items():
+            if value is not None:
+                db_key = LLM_KEY_MAP[provider]
+                cursor.execute(
+                    """INSERT INTO system_settings (setting_key, setting_value, description)
+                       VALUES (%s, %s, %s)
+                       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)""",
+                    (db_key, value, f'API Key {provider.capitalize()}')
+                )
+                saved.append(provider)
+        conn.commit()
+        return {"saved": saved}
     except Exception as e:
         conn.rollback()
         raise HTTPException(400, str(e))
